@@ -1,0 +1,279 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 213 31% 91%;
+    --card: 222 40% 10%;
+    --card-foreground: 213 31% 91%;
+    --popover: 222 40% 10%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 188 94% 48%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 222 30% 16%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 222 30% 14%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 188 94% 40%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 213 31% 91%;
+    --border: 222 30% 18%;
+    --input: 222 30% 16%;
+    --ring: 188 94% 48%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-navy-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-navy-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-cyan-500;
+  }
+}
+
+/* ── SNR Report Template Editor (TipTap WYSIWYG) ────────────────────────── */
+.snr-editor-content {
+  padding: 16px 20px;
+  outline: none;
+  min-height: 480px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: hsl(var(--foreground));
+  caret-color: #22d3ee;
+}
+.snr-editor-content:focus { outline: none; }
+
+/* Compact variant for inline email-section editors */
+.snr-editor-content.snr-richtext-compact {
+  min-height: 80px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.snr-editor-content h1 {
+  font-size: 1.35rem; font-weight: 700;
+  color: hsl(var(--foreground));
+  margin: 1.4em 0 0.5em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.snr-editor-content h2 {
+  font-size: 1.1rem; font-weight: 600;
+  color: hsl(var(--foreground) / 0.9);
+  margin: 1.2em 0 0.4em;
+}
+.snr-editor-content h3 {
+  font-size: 0.95rem; font-weight: 600;
+  color: hsl(var(--foreground) / 0.8);
+  margin: 1em 0 0.3em;
+}
+.snr-editor-content h4 {
+  font-size: 0.82rem; font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  margin: 0.9em 0 0.3em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.snr-editor-content p { margin: 0.4em 0; }
+.snr-editor-content strong { font-weight: 700; color: hsl(var(--foreground)); }
+.snr-editor-content em { font-style: italic; color: hsl(var(--foreground) / 0.85); }
+.snr-editor-content ul {
+  list-style-type: disc; padding-left: 1.5em; margin: 0.4em 0;
+}
+.snr-editor-content ol {
+  list-style-type: decimal; padding-left: 1.5em; margin: 0.4em 0;
+}
+.snr-editor-content li { margin: 0.2em 0; }
+.snr-editor-content hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 1.2em 0;
+}
+.snr-editor-content code {
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.85em;
+  background: hsl(var(--secondary) / 0.6);
+  border-radius: 3px; padding: 0 4px;
+}
+
+/* Token chip decorations */
+.token-chip-field {
+  color: #22d3ee;
+  background-color: rgba(34, 211, 238, 0.12);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.85em;
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  white-space: nowrap;
+}
+.token-chip-block {
+  color: #fb923c;
+  background-color: rgba(251, 146, 60, 0.12);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.85em;
+  border: 1px solid rgba(251, 146, 60, 0.25);
+  white-space: nowrap;
+}
+.token-chip-unknown { opacity: 0.6; border-style: dashed; }
+
+/* React Flow overrides */
+.react-flow__node {
+  font-family: inherit;
+}
+.react-flow__edge-path {
+  stroke: #22d3ee;
+  stroke-width: 2;
+}
+.react-flow__controls {
+  background: #0d1526;
+  border: 1px solid #1e2d4a;
+  border-radius: 6px;
+}
+.react-flow__controls-button {
+  background: #0d1526;
+  border-color: #1e2d4a;
+  color: #94a3b8;
+}
+.react-flow__controls-button:hover {
+  background: #162040;
+}
+.react-flow__minimap {
+  background: #0d1526;
+  border: 1px solid #1e2d4a;
+  border-radius: 6px;
+}
+.react-flow__background {
+  background: #070d1a;
+}
+
+/* Email section inline markdown (compact, inherits text-xs from parent) */
+.snr-email-section p { margin: 0 0 0.4em 0; }
+.snr-email-section p:last-child { margin-bottom: 0; }
+.snr-email-section strong { font-weight: 600; color: inherit; }
+.snr-email-section em { font-style: italic; }
+.snr-email-section ul { list-style: disc; padding-left: 1.2em; margin: 0.25em 0; }
+.snr-email-section ol { list-style: decimal; padding-left: 1.2em; margin: 0.25em 0; }
+.snr-email-section li { margin: 0.1em 0; }
+.snr-email-section code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.08); padding: 0.1em 0.3em; border-radius: 3px; }
+
+/* Markdown report preview styles */
+.snr-markdown-report {
+  color: hsl(213, 31%, 91%);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.snr-markdown-report h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  border-bottom: 1px solid hsl(222, 30%, 20%);
+  padding-bottom: 0.3em;
+  margin: 1.2em 0 0.6em;
+  color: hsl(188, 94%, 60%);
+}
+.snr-markdown-report h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+  color: hsl(213, 31%, 95%);
+}
+.snr-markdown-report h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+  color: hsl(213, 31%, 85%);
+}
+.snr-markdown-report p {
+  margin: 0.5em 0;
+}
+.snr-markdown-report hr {
+  border: none;
+  border-top: 1px solid hsl(222, 30%, 20%);
+  margin: 1em 0;
+}
+.snr-markdown-report ul, .snr-markdown-report ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.snr-markdown-report li {
+  margin: 0.25em 0;
+}
+.snr-markdown-report strong {
+  color: hsl(213, 31%, 95%);
+}
+.snr-markdown-report code {
+  background: hsl(222, 40%, 14%);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.snr-markdown-report blockquote {
+  border-left: 3px solid hsl(188, 94%, 40%);
+  padding: 0.3em 0.8em;
+  margin: 0.5em 0;
+  color: hsl(215, 20%, 65%);
+  background: hsl(222, 40%, 10%);
+  border-radius: 0 4px 4px 0;
+}
+.snr-markdown-report table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.snr-markdown-report th {
+  background: hsl(222, 40%, 14%);
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid hsl(222, 30%, 25%);
+  color: hsl(213, 31%, 80%);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.snr-markdown-report td {
+  padding: 5px 10px;
+  border-bottom: 1px solid hsl(222, 30%, 18%);
+  vertical-align: top;
+}
+.snr-markdown-report tr:hover td {
+  background: hsl(222, 40%, 12%);
+}
+.snr-markdown-report em {
+  color: hsl(215, 20%, 65%);
+}
+
+/* Streaming cursor animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.streaming-cursor::after {
+  content: '▋';
+  animation: blink 1s step-end infinite;
+  color: #22d3ee;
+}
