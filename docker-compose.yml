@@ -1,0 +1,52 @@
+# SNR — on-prem deployment.
+#   1. Copy .env.example → .env and set JWT_SECRET, ALLOWED_ORIGINS, an LLM key,
+#      and A2N_ADMIN_EMAIL / A2N_ADMIN_PASSWORD (first-run admin bootstrap).
+#   2. Set SNR_DOMAIN in .env (or edit deploy/Caddyfile) for TLS.
+#   3. docker compose up -d
+#
+# The `app` container serves the API + built UI on :3001 (internal). `caddy`
+# terminates TLS and reverse-proxies to it. To front SNR with your OWN proxy
+# instead, remove the caddy service and publish app's port directly.
+services:
+  app:
+    build: .
+    image: snr:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DB_PATH: /data/snr.db
+      # Behind the caddy proxy → trust 1 hop for real client IPs / rate limiting
+      TRUST_PROXY: "1"
+    volumes:
+      - snr-data:/data          # SQLite DB + scheduled backups persist here
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SNR_DOMAIN: ${SNR_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  snr-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,23 @@
+# SNR reverse proxy.
+# - For a real domain, set SNR_DOMAIN in .env → Caddy auto-provisions a public
+#   Let's Encrypt certificate.
+# - For "localhost" (default) Caddy issues a local self-signed cert (browser
+#   warning is expected). For an internal CA/cert, replace the site block with
+#   your domain and `tls /path/cert.pem /path/key.pem`.
+{$SNR_DOMAIN} {
+	encode gzip
+	# Forward real client IP / proto so the app (TRUST_PROXY=1) logs and
+	# rate-limits correctly. Caddy sets X-Forwarded-For/Proto by default.
+	#
+	# Dynamic upstream: re-resolve "app" via Docker's embedded DNS (127.0.0.11)
+	# every few seconds so a container restart (new IP) is picked up
+	# automatically — no need to bounce Caddy after `docker compose restart app`.
+	reverse_proxy {
+		dynamic a {
+			name app
+			port 3001
+			refresh 5s
+			resolvers 127.0.0.11
+		}
+	}
+}

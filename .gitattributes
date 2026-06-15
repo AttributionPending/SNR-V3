@@ -1,0 +1,15 @@
+# Normalize line endings: store text as LF in the repo. The app is built and run on
+# Linux (Docker/CI), so LF is authoritative; Windows checkouts keep LF too.
+* text=auto eol=lf
+
+# Binary assets — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.docx binary
