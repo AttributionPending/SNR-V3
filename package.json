@@ -45,6 +45,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "fast-xml-parser": "^5.9.0",
     "helmet": "^8.0.0",
     "html-to-image": "^1.11.13",
     "jsonrepair": "^3.13.2",

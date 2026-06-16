@@ -995,3 +995,74 @@ export async function revokeApiKey(keyId: string): Promise<void> {
   const res = await authFetch(`${BASE}/keys/${keyId}/revoke`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to revoke key');
 }
+
+// ── Threat-intel feeds (admin/lead) ──────────────────────────────────────────
+
+export interface FeedRecord {
+  id: string;
+  name: string;
+  type: 'taxii' | 'misp' | 'rss';
+  url: string;
+  audience: string;
+  tags: string;
+  cadence_minutes: number;
+  max_items: number;
+  enabled: number;
+  last_polled_at: number | null;
+  last_status: string | null;
+  has_auth?: boolean;
+}
+
+export interface FeedInput {
+  name: string;
+  type: 'taxii' | 'misp' | 'rss';
+  url: string;
+  authToken?: string;
+  config?: string;
+  audience?: string;
+  tags?: string[];
+  cadenceMinutes?: number;
+  maxItems?: number;
+}
+
+export async function listFeeds(): Promise<FeedRecord[]> {
+  const res = await authFetch(`${BASE}/feeds`);
+  if (!res.ok) throw new Error('Failed to load feeds');
+  return (await res.json()).feeds;
+}
+
+export async function createFeed(body: FeedInput): Promise<{ id: string }> {
+  const res = await authFetch(`${BASE}/feeds`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to create feed');
+  return res.json();
+}
+
+export async function updateFeed(id: string, body: Partial<FeedInput> & { enabled?: boolean }): Promise<void> {
+  const res = await authFetch(`${BASE}/feeds/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to update feed');
+}
+
+export async function deleteFeed(id: string): Promise<void> {
+  const res = await authFetch(`${BASE}/feeds/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete feed');
+}
+
+export async function testFeed(id: string): Promise<{ count: number; sample: string[] }> {
+  const res = await authFetch(`${BASE}/feeds/${id}/test`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Feed test failed');
+  return res.json();
+}
+
+export async function pollFeedNow(id: string): Promise<{ fetched: number; ingested: number; skipped: number }> {
+  const res = await authFetch(`${BASE}/feeds/${id}/poll`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Feed poll failed');
+  return res.json();
+}

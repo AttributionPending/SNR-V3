@@ -26,6 +26,8 @@ import threatActorsRouter from './routes/threat-actors.js';
 import searchRouter from './routes/search.js';
 import keysRouter from './routes/keys.js';
 import v1Router from './routes/v1.js';
+import feedsRouter from './routes/feeds.js';
+import { startFeedScheduler } from './lib/feeds/scheduler.js';
 import { requireApiKey, type ServiceAuthRequest } from './middleware/apiKey.js';
 
 // Resolve .env relative to this file's location (server/ → project root)
@@ -153,6 +155,9 @@ app.use('/api/analytics', requireAuth, requireTeamMember, analyticsRouter);
 app.use('/api/threat-actors', requireAuth, requireTeamMember, threatActorsRouter);
 app.use('/api/search', requireAuth, requireTeamMember, searchRouter);
 
+// ── Threat-intel feeds (JWT, team-scoped) ────────────────────────────────
+app.use('/api/feeds', requireAuth, requireTeamMember, feedsRouter);
+
 // ── API key management (admin, JWT) ──────────────────────────────────────
 app.use('/api/keys', requireAuth, requireRole('admin'), requireTeamMember, keysRouter);
 
@@ -277,14 +282,18 @@ async function start() {
     });
   }, 60 * 60 * 1000);
 
-  // Scheduled database backups (consistent VACUUM INTO snapshots + retention)
+  // Scheduled database backups (pg_dump snapshots + retention)
   const stopBackups = startBackupScheduler();
+
+  // Threat-intel feed polling (per-team feeds on their cadence)
+  const stopFeeds = startFeedScheduler();
 
   // Graceful shutdown
   const shutdown = (signal: string) => {
     logger.info({ signal }, 'Received shutdown signal, closing gracefully…');
     clearInterval(cleanupInterval);
     stopBackups();
+    stopFeeds();
     server.close(async () => {
       logger.info('HTTP server closed');
       try {

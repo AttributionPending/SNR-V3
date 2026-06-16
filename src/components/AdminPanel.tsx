@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye, KeyRound } from 'lucide-react';
+import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye, KeyRound, Rss } from 'lucide-react';
 import ApiKeysPanel from './ApiKeysPanel';
+import FeedsPanel from './FeedsPanel';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import ConfirmDialog from './ConfirmDialog';
@@ -18,7 +19,7 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: 'text-muted-foreground bg-secondary/50 border-border',
 };
 
-type Tab = 'users' | 'teams' | 'apikeys';
+type Tab = 'users' | 'teams' | 'apikeys' | 'feeds';
 
 export default function AdminPanel({ open, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('users');
@@ -225,6 +226,15 @@ export default function AdminPanel({ open, onClose }: Props) {
               >
                 <KeyRound className="w-3 h-3 inline mr-1" />API Keys
               </button>
+              <button
+                onClick={() => { setTab('feeds'); setSelectedTeam(null); }}
+                className={cn(
+                  'px-2.5 py-1 text-xs rounded-md transition-colors',
+                  tab === 'feeds' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Rss className="w-3 h-3 inline mr-1" />Threat Feeds
+              </button>
             </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -348,6 +358,8 @@ export default function AdminPanel({ open, onClose }: Props) {
             </div>
           ) : tab === 'apikeys' ? (
             <ApiKeysPanel />
+          ) : tab === 'feeds' ? (
+            <FeedsPanel />
           ) : /* teams tab */ selectedTeam ? (
             /* Team detail view */
             <div className="space-y-4">
