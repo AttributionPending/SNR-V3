@@ -32,7 +32,7 @@ interface ThreatActorRow {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function autoLinkThreatActor(db: any, sessionId: string, result: AnalysisResultLike, teamId: string, userId: string): Promise<void> {
+export async function autoLinkThreatActor(db: any, sessionId: string, result: AnalysisResultLike, teamId: string, userId: string | null): Promise<void> {
   const actor = result.threat_actor;
   const hasAttribution = actor?.name && actor.name.trim();
 
@@ -166,7 +166,7 @@ export async function autoLinkThreatActor(db: any, sessionId: string, result: An
 
 /** Find-or-create the team-scoped "Unattributed" placeholder and link the session to it. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function linkToUnattributed(db: any, sessionId: string, teamId: string, userId: string): Promise<void> {
+async function linkToUnattributed(db: any, sessionId: string, teamId: string, userId: string | null): Promise<void> {
   const now = Date.now();
 
   // Already linked?

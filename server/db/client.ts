@@ -127,6 +127,26 @@ export async function withTransaction<T>(fn: (c: pg.PoolClient) => Promise<T>): 
   }
 }
 
+/**
+ * Run `fn` while holding a Postgres session advisory lock on `key`. Used to
+ * serialize startup migrations across processes (the API and the worker both run
+ * migrations on boot), so they don't race on CREATE TABLE / schema_migrations.
+ */
+export async function withAdvisoryLock<T>(key: number, fn: () => Promise<T>): Promise<T> {
+  const c = await getPool().connect();
+  try {
+    await c.query('SELECT pg_advisory_lock($1)', [key]);
+    return await fn();
+  } finally {
+    try {
+      await c.query('SELECT pg_advisory_unlock($1)', [key]);
+    } catch {
+      /* ignore */
+    }
+    c.release();
+  }
+}
+
 /** Verify connectivity (used by readiness checks / startup). */
 export async function pingDb(): Promise<void> {
   await getPool().query('SELECT 1');

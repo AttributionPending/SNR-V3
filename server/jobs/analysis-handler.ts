@@ -8,8 +8,10 @@
  * Persistence (analysis_results, session status, threat-actor auto-link, audit)
  * is identical to V2.
  */
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, appendAuditLog, loadMergedSettings } from '../db/database.js';
+import { readSecret } from '../lib/secrets.js';
 import { analyzeWithClaude } from '../lib/claude.js';
 import { parseSections } from '../lib/sections.js';
 import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
@@ -122,7 +124,7 @@ export async function runAnalysisJob(jobId: string, p: AnalysisJobData): Promise
 
     appendAuditLog({
       analyst_name: p.displayName,
-      user_id: p.userId,
+      user_id: p.userId ?? undefined,
       session_id: p.sessionId,
       action: p.auditAction,
       input_hash: p.inputHash,
@@ -136,6 +138,7 @@ export async function runAnalysisJob(jobId: string, p: AnalysisJobData): Promise
 
     await writer.complete({ result, version: newVersion });
     await writer.drain();
+    await fireWebhook(p, { status: 'complete', version: newVersion });
   } catch (err) {
     // Mark the session failed so it doesn't sit in 'analyzing' forever and the
     // UI can offer a retry. Stream an error event for any attached client.
@@ -150,5 +153,39 @@ export async function runAnalysisJob(jobId: string, p: AnalysisJobData): Promise
     logger.warn({ err, session_id: p.sessionId }, 'Analysis job failed');
     await writer.error(message);
     await writer.drain();
+    await fireWebhook(p, { status: 'failed', error: message });
+  }
+}
+
+/**
+ * POST a completion notification to the submission's callback URL, if any.
+ * Best-effort and failure-safe. Signs the body with HMAC-SHA256 using
+ * SNR_WEBHOOK_SECRET (header X-SNR-Signature) when that secret is configured.
+ */
+async function fireWebhook(
+  p: AnalysisJobData,
+  outcome: { status: 'complete' | 'failed'; version?: number; error?: string },
+): Promise<void> {
+  if (!p.webhookUrl) return;
+  try {
+    const payload = JSON.stringify({
+      sessionId: p.sessionId,
+      teamId: p.teamId,
+      ...outcome,
+      ts: Date.now(),
+    });
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const secret = readSecret('SNR_WEBHOOK_SECRET');
+    if (secret) {
+      headers['x-snr-signature'] =
+        'sha256=' + crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10_000);
+    await fetch(p.webhookUrl, { method: 'POST', headers, body: payload, signal: ctrl.signal });
+    clearTimeout(t);
+    logger.info({ sessionId: p.sessionId, status: outcome.status }, 'Webhook delivered');
+  } catch (err) {
+    logger.warn({ err, sessionId: p.sessionId }, 'Webhook delivery failed (non-fatal)');
   }
 }

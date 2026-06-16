@@ -8,13 +8,20 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { rawQuery, withTransaction } from './client.js';
+import { rawQuery, withTransaction, withAdvisoryLock } from './client.js';
 import logger from '../lib/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
-export async function runMigrations(): Promise<void> {
+// Fixed key so the API and worker processes serialize migrations on startup.
+const MIGRATION_LOCK_KEY = 776611;
+
+export function runMigrations(): Promise<void> {
+  return withAdvisoryLock(MIGRATION_LOCK_KEY, runMigrationsLocked);
+}
+
+async function runMigrationsLocked(): Promise<void> {
   await rawQuery(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename TEXT PRIMARY KEY,

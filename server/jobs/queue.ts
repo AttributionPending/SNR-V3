@@ -22,8 +22,11 @@ export interface AnalysisJobData {
   inputHash: string;
   auditAction: 'analysis_complete' | 'analysis_rerun';
   teamId: string;
-  userId: string;
+  /** Owning user id, or null for service-account (API) submissions. */
+  userId: string | null;
   displayName: string;
+  /** Optional callback URL POSTed on terminal job state (integration API). */
+  webhookUrl?: string | null;
 }
 
 let boss: PgBoss | undefined;

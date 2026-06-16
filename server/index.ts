@@ -7,7 +7,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { getDb, initDb, bootstrapAdmin, closeDb } from './db/database.js';
 import { pingDb } from './db/client.js';
-import { requireAuth, requireTeamMember } from './middleware/auth.js';
+import { requireAuth, requireTeamMember, requireRole } from './middleware/auth.js';
 import { cleanupRevokedTokens, initAuthSecret } from './lib/auth-utils.js';
 import { readSecret } from './lib/secrets.js';
 import { startBackupScheduler } from './lib/backup.js';
@@ -24,6 +24,9 @@ import settingsRouter from './routes/settings.js';
 import analyticsRouter from './routes/analytics.js';
 import threatActorsRouter from './routes/threat-actors.js';
 import searchRouter from './routes/search.js';
+import keysRouter from './routes/keys.js';
+import v1Router from './routes/v1.js';
+import { requireApiKey, type ServiceAuthRequest } from './middleware/apiKey.js';
 
 // Resolve .env relative to this file's location (server/ → project root)
 // Using import.meta.url ensures this works regardless of the working directory.
@@ -88,6 +91,19 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
+  // The integration API (/api/v1) is rate-limited per API key instead of per IP,
+  // so a single integration host isn't throttled by the shared IP budget.
+  skip: (req) => req.originalUrl.startsWith('/api/v1'),
+});
+
+// Per-API-key rate limiter for the integration API (window = 1 minute).
+const v1Limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: (req) => (req as ServiceAuthRequest).rateLimitPerMin || 60,
+  keyGenerator: (req) => (req as ServiceAuthRequest).apiKeyId || req.ip || 'unknown',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded for this API key' },
 });
 
 // Strict rate limiting for auth endpoints (brute force protection)
@@ -136,6 +152,16 @@ app.use('/api/settings', requireAuth, requireTeamMember, settingsRouter);
 app.use('/api/analytics', requireAuth, requireTeamMember, analyticsRouter);
 app.use('/api/threat-actors', requireAuth, requireTeamMember, threatActorsRouter);
 app.use('/api/search', requireAuth, requireTeamMember, searchRouter);
+
+// ── API key management (admin, JWT) ──────────────────────────────────────
+app.use('/api/keys', requireAuth, requireRole('admin'), requireTeamMember, keysRouter);
+
+// ── Integration API (v1, machine auth) ───────────────────────────────────
+// OpenAPI spec is public so tooling can fetch it; everything else needs a key.
+app.get('/api/v1/openapi.json', (_req, res) => {
+  res.sendFile(path.resolve(__dirname, 'openapi.json'));
+});
+app.use('/api/v1', requireApiKey, v1Limiter, v1Router);
 
 // Health check (no auth — used for monitoring)
 const startedAt = Date.now();

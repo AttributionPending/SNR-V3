@@ -916,3 +916,82 @@ function getFilenameFromResponse(res: Response, fallback: string): string {
   const match = cd.match(/filename="([^"]+)"/);
   return match?.[1] ?? fallback;
 }
+
+// ── API key management (admin) ───────────────────────────────────────────────
+
+export interface ServiceAccountRecord {
+  id: string;
+  name: string;
+  team_id: string;
+  role: 'analyst' | 'viewer';
+  disabled: number;
+  active_keys: number;
+  created_at: number;
+}
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string;
+  rate_limit_per_min: number;
+  created_at: number;
+  last_used_at: number | null;
+  expires_at: number | null;
+  revoked_at: number | null;
+}
+
+export async function getApiScopes(): Promise<string[]> {
+  const res = await authFetch(`${BASE}/keys/scopes`);
+  if (!res.ok) throw new Error('Failed to load scopes');
+  return (await res.json()).scopes;
+}
+
+export async function listServiceAccounts(): Promise<ServiceAccountRecord[]> {
+  const res = await authFetch(`${BASE}/keys/service-accounts`);
+  if (!res.ok) throw new Error('Failed to load service accounts');
+  return (await res.json()).serviceAccounts;
+}
+
+export async function createServiceAccount(name: string, role: 'analyst' | 'viewer'): Promise<{ id: string }> {
+  const res = await authFetch(`${BASE}/keys/service-accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, role }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to create service account');
+  return res.json();
+}
+
+export async function setServiceAccountDisabled(id: string, disabled: boolean): Promise<void> {
+  const res = await authFetch(`${BASE}/keys/service-accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled }),
+  });
+  if (!res.ok) throw new Error('Failed to update service account');
+}
+
+export async function listApiKeys(accountId: string): Promise<ApiKeyRecord[]> {
+  const res = await authFetch(`${BASE}/keys/service-accounts/${accountId}/keys`);
+  if (!res.ok) throw new Error('Failed to load keys');
+  return (await res.json()).keys;
+}
+
+export async function mintApiKey(
+  accountId: string,
+  body: { name: string; scopes: string[]; rateLimitPerMin?: number },
+): Promise<{ id: string; token: string; prefix: string }> {
+  const res = await authFetch(`${BASE}/keys/service-accounts/${accountId}/keys`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to mint key');
+  return res.json();
+}
+
+export async function revokeApiKey(keyId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/keys/${keyId}/revoke`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to revoke key');
+}
