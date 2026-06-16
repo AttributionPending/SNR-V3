@@ -55,6 +55,23 @@ services:
       retries: 3
       start_period: 20s
 
+  worker:
+    build: .
+    image: snr-v3:latest
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-snr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-snr}
+      BACKUP_DIR: /data/backups
+      # ANALYSIS_WORKER_CONCURRENCY: "2"   # parallel analyses per worker
+    volumes:
+      - snr-data:/data
+
   caddy:
     image: caddy:2
     restart: unless-stopped
