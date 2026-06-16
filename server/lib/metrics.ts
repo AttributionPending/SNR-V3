@@ -43,3 +43,18 @@ export const jobsProcessedTotal = new Counter({
   labelNames: ['result'] as const,
   registers: [registry],
 });
+
+// Threat-intel feed metrics.
+export const feedPollsTotal = new Counter({
+  name: 'snr_feed_polls_total',
+  help: 'Total feed polls, labeled by type and result (success|failed).',
+  labelNames: ['type', 'result'] as const,
+  registers: [registry],
+});
+
+export const feedItemsIngestedTotal = new Counter({
+  name: 'snr_feed_items_ingested_total',
+  help: 'Total new feed items ingested (turned into analyzed sessions), by type.',
+  labelNames: ['type'] as const,
+  registers: [registry],
+});
