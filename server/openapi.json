@@ -1,0 +1,110 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SNR Integration API",
+    "version": "1.0.0",
+    "description": "Machine-authenticated API for submitting analyses and retrieving results programmatically. Authenticate with an API key as `Authorization: Bearer snr_…` or `X-API-Key: snr_…`. All access is scoped to the key's team. Rate limits are per key."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Authorization: Bearer snr_…" },
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+    },
+    "schemas": {
+      "SubmitRequest": {
+        "type": "object",
+        "required": ["audience"],
+        "properties": {
+          "name": { "type": "string", "description": "Optional session name." },
+          "audience": { "type": "string", "description": "soc | purple_team | red_team | dr | general | <custom>" },
+          "siem": { "type": "string", "description": "Raw SIEM/alert text." },
+          "text": { "type": "string", "description": "Free-text threat reporting." },
+          "redacted_strings": { "type": "array", "items": { "type": "string" }, "description": "Substrings to mask before analysis." },
+          "webhook_url": { "type": "string", "format": "uri", "description": "Optional http(s) URL POSTed on completion (HMAC-signed if SNR_WEBHOOK_SECRET is set)." }
+        }
+      },
+      "SubmitResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": { "type": "string" },
+          "jobId": { "type": "string" },
+          "status": { "type": "string", "example": "queued" }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "sessionId": { "type": "string" },
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "analyzing", "complete", "failed"] },
+          "severity": { "type": "string", "nullable": true },
+          "audience": { "type": "string", "nullable": true },
+          "version": { "type": "integer", "nullable": true },
+          "createdAt": { "type": "integer" },
+          "updatedAt": { "type": "integer" }
+        }
+      },
+      "Error": { "type": "object", "properties": { "error": { "type": "string" } } }
+    }
+  },
+  "paths": {
+    "/analyze": {
+      "post": {
+        "summary": "Submit a new analysis",
+        "description": "Enqueues an analysis job and returns immediately. Requires scope `analyze:write`.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SubmitRequest" } } }
+        },
+        "responses": {
+          "202": { "description": "Accepted — job queued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SubmitResponse" } } } },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing/invalid API key" },
+          "403": { "description": "Missing scope analyze:write" },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/analyses/{id}": {
+      "get": {
+        "summary": "Get analysis status",
+        "description": "Poll for job/session status. Requires scope `sessions:read`.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/analyses/{id}/result": {
+      "get": {
+        "summary": "Get the structured analysis result",
+        "description": "Returns the latest result (false-positive IOCs excluded). 409 until complete. Requires scope `sessions:read`.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Result JSON" },
+          "409": { "description": "Analysis not complete" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/analyses/{id}/export/{format}": {
+      "get": {
+        "summary": "Export an analysis",
+        "description": "format = stix | navigator | iocs. Requires scope `export:read`.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "format", "in": "path", "required": true, "schema": { "type": "string", "enum": ["stix", "navigator", "iocs"] } }
+        ],
+        "responses": {
+          "200": { "description": "Export document (STIX 2.1 bundle, ATT&CK Navigator layer, or IOC list)" },
+          "400": { "description": "Unsupported format" },
+          "409": { "description": "Analysis not complete" },
+          "404": { "description": "Not found" }
+        }
+      }
+    }
+  }
+}

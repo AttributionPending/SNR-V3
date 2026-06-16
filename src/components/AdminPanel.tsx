@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye } from 'lucide-react';
+import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye, KeyRound } from 'lucide-react';
+import ApiKeysPanel from './ApiKeysPanel';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import ConfirmDialog from './ConfirmDialog';
@@ -17,7 +18,7 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: 'text-muted-foreground bg-secondary/50 border-border',
 };
 
-type Tab = 'users' | 'teams';
+type Tab = 'users' | 'teams' | 'apikeys';
 
 export default function AdminPanel({ open, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('users');
@@ -215,6 +216,15 @@ export default function AdminPanel({ open, onClose }: Props) {
               >
                 <Building2 className="w-3 h-3 inline mr-1" />Teams
               </button>
+              <button
+                onClick={() => { setTab('apikeys'); setSelectedTeam(null); }}
+                className={cn(
+                  'px-2.5 py-1 text-xs rounded-md transition-colors',
+                  tab === 'apikeys' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <KeyRound className="w-3 h-3 inline mr-1" />API Keys
+              </button>
             </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -336,6 +346,8 @@ export default function AdminPanel({ open, onClose }: Props) {
                 ))}
               </div>
             </div>
+          ) : tab === 'apikeys' ? (
+            <ApiKeysPanel />
           ) : /* teams tab */ selectedTeam ? (
             /* Team detail view */
             <div className="space-y-4">
