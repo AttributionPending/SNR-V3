@@ -11,7 +11,9 @@ import { requireAuth, requireTeamMember } from './middleware/auth.js';
 import { cleanupRevokedTokens, initAuthSecret } from './lib/auth-utils.js';
 import { readSecret } from './lib/secrets.js';
 import { startBackupScheduler } from './lib/backup.js';
-import { registry } from './lib/metrics.js';
+import { registry, analysisQueueDepth } from './lib/metrics.js';
+import { startBoss, stopBoss, getQueueStats } from './jobs/queue.js';
+import { cleanupOldJobEvents } from './jobs/events.js';
 import logger, { requestLogger } from './lib/logger.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
@@ -173,6 +175,12 @@ app.get('/metrics', async (req, res) => {
     res.status(401).end();
     return;
   }
+  // Refresh the queue-depth gauge at scrape time (best-effort).
+  try {
+    const stats = await getQueueStats();
+    analysisQueueDepth.set({ state: 'queued' }, stats.queued);
+    analysisQueueDepth.set({ state: 'active' }, stats.active);
+  } catch { /* queue may not be started yet */ }
   res.set('Content-Type', registry.contentType);
   res.end(await registry.metrics());
 });
@@ -220,6 +228,14 @@ async function start() {
   // Bootstrap admin account on first run (idempotent)
   await bootstrapAdmin();
 
+  // Start the job queue so analyses can be enqueued (the worker process consumes
+  // them). Non-fatal if it can't start — analyze endpoints will surface the error.
+  try {
+    await startBoss();
+  } catch (err) {
+    logger.error({ err }, 'Failed to start job queue (analyses will fail until Postgres/queue is available)');
+  }
+
   const server = app.listen(PORT, HOST, () => {
     logger.info(`SNR Server running at http://${HOST}:${PORT}`);
     logger.info(`LLM Provider: ${readSecret('ANTHROPIC_API_KEY') ? '✓ Configured' : '✗ NOT configured — add ANTHROPIC_API_KEY to .env'}`);
@@ -229,6 +245,9 @@ async function start() {
   const cleanupInterval = setInterval(() => {
     cleanupRevokedTokens().catch((err) => {
       logger.error({ err }, 'Failed to cleanup revoked tokens');
+    });
+    cleanupOldJobEvents().catch((err) => {
+      logger.error({ err }, 'Failed to cleanup old job events');
     });
   }, 60 * 60 * 1000);
 
@@ -243,9 +262,10 @@ async function start() {
     server.close(async () => {
       logger.info('HTTP server closed');
       try {
+        await stopBoss();
         await closeDb();
-        logger.info('Database connection pool closed');
-      } catch { /* DB may already be closed */ }
+        logger.info('Job queue and database connections closed');
+      } catch { /* may already be closed */ }
       process.exit(0);
     });
     // Force exit after 10s if graceful shutdown stalls

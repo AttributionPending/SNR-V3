@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import { getDb, appendAuditLog, loadMergedSettings } from '../db/database.js';
-import { analyzeWithClaude } from '../lib/claude.js';
 import { buildStixBundle, buildNavigatorLayer } from '../lib/stix.js';
 import { buildEml, buildHtmlBody } from '../lib/eml.js';
 import { parseSections } from '../lib/sections.js';
@@ -13,11 +12,9 @@ import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import type { AnalysisResult } from '../lib/claude.js';
 import logger from '../lib/logger.js';
-import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
-import { validateAttackFlow } from '../lib/attack-flow.js';
 import { buildAfb } from '../lib/afb.js';
-import { analysisRunsTotal, analysisDurationSeconds } from '../lib/metrics.js';
-import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
+import { enqueueAnalysis } from '../jobs/queue.js';
+import { streamJobToResponse } from '../jobs/events.js';
 
 const router = Router();
 
@@ -266,7 +263,11 @@ router.post('/', upload.single('logFile'), async (req: Request, res: Response) =
     await db.prepare('UPDATE sessions SET status = ?, updated_at = ?, input_hash = ? WHERE id = ?')
       .run('analyzing', now, inputHash, session_id);
 
-    await runAnalysisPipeline(req, res, {
+    // Enqueue the analysis as a background job (the worker owns the LLM work, so
+    // an API restart never interrupts it), then stream the job's progress to the
+    // client as SSE in the same event format the frontend already consumes.
+    const authReq = req as AuthenticatedRequest;
+    const jobId = await enqueueAnalysis({
       sessionId: session_id,
       siemClean,
       textClean,
@@ -274,7 +275,11 @@ router.post('/', upload.single('logFile'), async (req: Request, res: Response) =
       audience,
       inputHash,
       auditAction: 'analysis_complete',
+      teamId: authReq.teamId,
+      userId: authReq.user.id,
+      displayName: authReq.user.displayName,
     });
+    await streamJobToResponse(res, jobId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Analysis failed';
     res.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
@@ -282,167 +287,6 @@ router.post('/', upload.single('logFile'), async (req: Request, res: Response) =
   }
 });
 
-/**
- * Shared SSE analysis pipeline — used by POST / (fresh analysis) and
- * POST /rerun/:sessionId (retry / re-analyze from stored inputs).
- * Sets up the SSE stream, runs the two-phase LLM analysis, persists the
- * result as a new version, and updates session status ('complete' on
- * success, 'failed' on error).
- */
-async function runAnalysisPipeline(
-  req: Request,
-  res: Response,
-  p: {
-    sessionId: string;
-    siemClean: string;
-    textClean: string;
-    logClean: string;
-    audience: string;
-    inputHash: string;
-    auditAction: 'analysis_complete' | 'analysis_rerun';
-  },
-): Promise<void> {
-  const db = getDb();
-  const now = Date.now();
-  const metricKind = p.auditAction === 'analysis_rerun' ? 'rerun' : 'analyze';
-  const startedAt = Date.now();
-
-  // SSE setup for streaming
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  const sendEvent = (event: string, data: unknown) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  };
-
-  const authReq = req as AuthenticatedRequest;
-
-  try {
-    // Load team-merged settings
-    const settings = await loadMergedSettings(authReq.teamId);
-
-    sendEvent('status', { message: 'Phase 1 of 2 — Extracting ATT&CK techniques and IOCs…', phase: 1 });
-
-    const audienceKey = p.audience.replace(/-/g, '_');
-    let audiencePromptOverride = settings[`audience_prompt_${audienceKey}`] || undefined;
-    let resolvedAudience = p.audience;
-
-    // If no built-in override found, check custom audiences
-    if (!audiencePromptOverride && !['purple_team', 'soc', 'red_team', 'dr', 'general'].includes(audienceKey)) {
-      try {
-        const customList = JSON.parse(settings['custom_audiences'] || '[]') as Array<{ id: string; label: string; prompt: string }>;
-        const custom = customList.find((a) => a.id === p.audience);
-        if (custom) {
-          audiencePromptOverride = custom.prompt || undefined;
-          resolvedAudience = custom.label;
-        }
-      } catch { /* ignore parse error */ }
-    }
-
-    const sections = parseSections(settings.report_sections || '');
-
-    const result = await analyzeWithClaude(
-      {
-        siem: p.siemClean || undefined,
-        log: p.logClean || undefined,
-        text: p.textClean || undefined,
-        audience: resolvedAudience,
-        sections,
-        orgEvaluationCriteria: settings.org_evaluation_criteria || undefined,
-        orgDetectionContext: settings.org_detection_context || undefined,
-        audiencePromptOverride,
-        systemPromptOverride: settings.system_prompt_override || undefined,
-        phase1InstructionsOverride: settings.phase1_instructions_override || undefined,
-        phase2TemplateOverride: settings.phase2_template_override || undefined,
-        providerSettings: settings,
-      },
-      (chunk, phase) => {
-        if (chunk === '' && phase === 'phase2') {
-          sendEvent('status', { message: 'Phase 2 of 2 — Generating stakeholder brief…', phase: 2 });
-        } else if (chunk) {
-          sendEvent('chunk', { text: chunk, phase });
-        }
-      }
-    );
-
-    // Validate the model returned a usable result
-    if (!result.incident_summary?.title || !result.incident_summary?.severity) {
-      throw new Error(
-        'The model returned an incomplete analysis — missing incident_summary. ' +
-        'This usually means the model cannot produce SNR\'s required JSON schema. ' +
-        'Try a larger model (33B+) or use the Anthropic API.'
-      );
-    }
-
-    // Validate IOC formats and deduplicate
-    if (result.iocs && result.iocs.length > 0) {
-      const before = result.iocs.length;
-      result.iocs = validateAndDeduplicateIOCs(result.iocs);
-      const invalidCount = result.iocs.filter(i => i.validation && !i.validation.valid).length;
-      const deduped = before - result.iocs.length;
-      if (deduped > 0 || invalidCount > 0) {
-        logger.info(
-          { iocsBefore: before, iocsAfter: result.iocs.length, duplicatesRemoved: deduped, invalidCount },
-          `IOC validation: ${deduped} duplicates merged, ${invalidCount} invalid flagged`,
-        );
-      }
-    }
-
-    // Validate / repair the Attack Flow causal graph (drops dangling edges,
-    // breaks cycles, prunes orphans; falls back to undefined if too sparse)
-    result.attack_flow = validateAttackFlow(result.attack_flow, result.attack_chain ?? []);
-
-    // Determine latest version for this session
-    const latestVersion = ((await db.prepare('SELECT MAX(version) as v FROM analysis_results WHERE session_id = ?').get(p.sessionId)) as { v: number | null }).v ?? 0;
-    const newVersion = latestVersion + 1;
-
-    await db.prepare('INSERT INTO analysis_results (id, session_id, version, result_json, created_at) VALUES (?,?,?,?,?)')
-      .run(uuidv4(), p.sessionId, newVersion, JSON.stringify(result), now);
-
-    await db.prepare('UPDATE sessions SET status = ?, updated_at = ?, severity = ?, version = ? WHERE id = ?')
-      .run('complete', now, result.incident_summary.severity, newVersion, p.sessionId);
-
-    // Auto-link threat actor (additive, failure-safe)
-    try {
-      await autoLinkThreatActor(db, p.sessionId, result, authReq.teamId, authReq.user.id);
-    } catch (err) {
-      logger.warn({ err, session_id: p.sessionId }, 'Threat actor auto-link failed (non-fatal)');
-    }
-
-    const techniques = result.attack_chain.map((t) => t.sub_technique_id ?? t.technique_id);
-
-    appendAuditLog({
-      analyst_name: authReq.user.displayName,
-      user_id: authReq.user.id,
-      session_id: p.sessionId,
-      action: p.auditAction,
-      input_hash: p.inputHash,
-      techniques_identified: techniques,
-      details: `severity=${result.incident_summary.severity}, audience=${p.audience}`,
-    });
-
-    analysisRunsTotal.inc({ result: 'success', kind: metricKind });
-    analysisDurationSeconds.observe((Date.now() - startedAt) / 1000);
-
-    sendEvent('complete', { result, version: newVersion });
-    res.end();
-  } catch (err) {
-    // Mark the session failed so it doesn't sit in 'analyzing' forever and
-    // the UI can offer a retry.
-    try {
-      await db.prepare('UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?')
-        .run('failed', Date.now(), p.sessionId);
-    } catch { /* status update is best-effort */ }
-    analysisRunsTotal.inc({ result: 'failed', kind: metricKind });
-    analysisDurationSeconds.observe((Date.now() - startedAt) / 1000);
-    const message = err instanceof Error ? err.message : 'Analysis failed';
-    logger.warn({ err, session_id: p.sessionId }, 'Analysis pipeline failed');
-    sendEvent('error', { error: message });
-    res.end();
-  }
-}
 
 // POST /api/analyze/rerun/:sessionId — re-run analysis from stored inputs (SSE)
 router.post('/rerun/:sessionId', async (req: Request, res: Response) => {
@@ -498,7 +342,7 @@ router.post('/rerun/:sessionId', async (req: Request, res: Response) => {
     details: `audience=${audience}`,
   });
 
-  await runAnalysisPipeline(req, res, {
+  const jobId = await enqueueAnalysis({
     sessionId,
     siemClean,
     textClean,
@@ -506,7 +350,11 @@ router.post('/rerun/:sessionId', async (req: Request, res: Response) => {
     audience,
     inputHash,
     auditAction: 'analysis_rerun',
+    teamId: authReq.teamId,
+    userId: authReq.user.id,
+    displayName: authReq.user.displayName,
   });
+  await streamJobToResponse(res, jobId);
 });
 
 // POST /api/analyze/export/stix
