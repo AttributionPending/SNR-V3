@@ -6,6 +6,7 @@ import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import SettingsModal from './components/SettingsModal';
+import EmailStudio from './components/EmailStudio';
 import ReportsModal from './components/ReportsModal';
 import HelpModal from './components/HelpModal';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -93,6 +94,7 @@ function AppMain() {
   const [audience, setAudience] = useState<string>('soc');
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [brandingStudioOpen, setBrandingStudioOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -647,7 +649,18 @@ function AppMain() {
         <SettingsModal
           open={settingsOpen}
           onClose={() => { setSettingsOpen(false); loadCustomAudiences(); }}
+          onOpenEmailStudio={() => setBrandingStudioOpen(true)}
         />
+        {brandingStudioOpen && (
+          <EmailStudio
+            open={brandingStudioOpen}
+            standalone
+            onClose={() => setBrandingStudioOpen(false)}
+            audience={audience}
+            tlp="AMBER"
+            onShowToast={showToast}
+          />
+        )}
         <ReportsModal
           open={reportsOpen}
           onClose={() => setReportsOpen(false)}

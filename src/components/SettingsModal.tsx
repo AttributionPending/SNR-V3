@@ -12,6 +12,8 @@ import { parseSections } from '@/lib/sections';
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Launch the standalone Email Studio (team branding/templates/brand profiles). */
+  onOpenEmailStudio?: () => void;
 }
 
 type Section = 'llm_provider' | 'identity' | 'brief_sections' | 'cc_lists' | 'audience_intros' | 'audience_prompts' | 'report_template' | 'detection_as_code';
@@ -125,7 +127,7 @@ Structure the brief as an intelligence document:
 - References: cite all source reports, feeds, and CVEs used
 - Distribution Information: state TLP handling and authorized recipients`;
 
-export default function SettingsModal({ open, onClose }: Props) {
+export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Props) {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -444,10 +446,15 @@ export default function SettingsModal({ open, onClose }: Props) {
                 <li><strong className="text-foreground/70">Body layout</strong> — the section template with <span className="font-mono text-[10px]">{'{{BLOCK}}'}</span>/<span className="font-mono text-[10px]">{'{field}'}</span> tokens</li>
                 <li><strong className="text-foreground/70">Brand profiles</strong> — reusable per-client white-label themes + sender identity (From / Reply-To / CC / BCC / preheader / subject), selectable per session</li>
               </ul>
-              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground bg-navy-900/50 rounded p-2 border border-border/50">
+              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground bg-navy-900/50 rounded p-2 border border-border/50 mb-3">
                 <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-cyan-500/70" />
-                <span>Open Email Studio from the <strong className="text-foreground/70">Email</strong> tab of any analyzed session (the <em>Email Studio</em> button). Changes there save to the same team-wide defaults, so they apply across all sessions and exports.</span>
+                <span>Open it here to set up team branding before your first analysis, or from the <strong className="text-foreground/70">Email</strong> tab of any analyzed session (where you also edit that session's content and download the .eml). Changes save to the same team-wide defaults.</span>
               </div>
+              {onOpenEmailStudio && (
+                <Button variant="cyan" size="sm" className="text-xs h-7 gap-1.5" onClick={onOpenEmailStudio}>
+                  <Sparkles className="w-3.5 h-3.5" /> Open Email Studio
+                </Button>
+              )}
             </SectionCard>
 
             {/* ── AI Guidance (always visible) ── */}
