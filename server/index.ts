@@ -28,6 +28,7 @@ import keysRouter from './routes/keys.js';
 import v1Router from './routes/v1.js';
 import feedsRouter from './routes/feeds.js';
 import publishRouter from './routes/publish.js';
+import brandProfilesRouter from './routes/brand-profiles.js';
 import { startFeedScheduler } from './lib/feeds/scheduler.js';
 import { requireApiKey, type ServiceAuthRequest } from './middleware/apiKey.js';
 
@@ -155,6 +156,7 @@ app.use('/api/settings', requireAuth, requireTeamMember, settingsRouter);
 app.use('/api/analytics', requireAuth, requireTeamMember, analyticsRouter);
 app.use('/api/threat-actors', requireAuth, requireTeamMember, threatActorsRouter);
 app.use('/api/search', requireAuth, requireTeamMember, searchRouter);
+app.use('/api/brand-profiles', requireAuth, requireTeamMember, brandProfilesRouter);
 
 // ── Threat-intel feeds (JWT, team-scoped) ────────────────────────────────
 app.use('/api/feeds', requireAuth, requireTeamMember, feedsRouter);

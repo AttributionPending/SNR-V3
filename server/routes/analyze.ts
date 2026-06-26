@@ -15,6 +15,8 @@ import logger from '../lib/logger.js';
 import { buildAfb } from '../lib/afb.js';
 import { enqueueAnalysis } from '../jobs/queue.js';
 import { streamJobToResponse } from '../jobs/events.js';
+import { resolveBrandForSession, type EmailSender } from '../lib/brand-profiles.js';
+import type { EmailTheme } from '../lib/email-theme.js';
 
 const router = Router();
 
@@ -203,7 +205,7 @@ router.post('/email-preview', async (req: Request, res: Response) => {
 // applying in-progress (unsaved) overrides so the Email Studio previews edits live.
 router.post('/email-studio-preview', async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  const { session_id, tlp = 'AMBER', audience = 'soc', template, branding, reportSections, emailContentOverrides } =
+  const { session_id, tlp = 'AMBER', audience = 'soc', template, branding, reportSections, emailContentOverrides, theme: themeOverride, sender: senderOverride } =
     (req.body ?? {}) as {
       session_id?: string;
       tlp?: string;
@@ -212,6 +214,8 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
       branding?: Record<string, string>;
       reportSections?: string;
       emailContentOverrides?: Record<string, string>;
+      theme?: Partial<EmailTheme>;
+      sender?: Partial<EmailSender>;
     };
 
   if (!session_id) {
@@ -240,6 +244,11 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
   // In-progress branding overrides win over saved team settings.
   const m: Record<string, string> = { ...settings, ...(branding && typeof branding === 'object' ? branding : {}) };
   const sections = parseSections((typeof reportSections === 'string' ? reportSections : settings.report_sections) || '');
+
+  // Resolve the session's brand profile, then layer in-progress edits on top.
+  const brand = await resolveBrandForSession(session_id, authReq.teamId);
+  const effectiveTheme = { ...brand.theme, ...(themeOverride ?? {}) };
+  const effectiveSender = { ...brand.sender, ...(senderOverride ?? {}) };
 
   // Real email content = AI output + saved analyst overrides + in-progress edits.
   let savedOverrides: Record<string, string> = {};
@@ -281,6 +290,8 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
     template: (typeof template === 'string' ? template : m.email_template) || undefined,
     orgName: m.org_name || '',
     analystName: m.analyst_name || '',
+    theme: effectiveTheme,
+    preheader: effectiveSender.preheader,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -715,6 +726,7 @@ router.post('/export/eml', async (req: Request, res: Response) => {
   }
 
   const emlSections = parseSections(settings.report_sections || '');
+  const brand = await resolveBrandForSession(session_id, authReq.teamId);
 
   const eml = buildEml({
     result,
@@ -737,6 +749,8 @@ router.post('/export/eml', async (req: Request, res: Response) => {
     bodyFontSize: settings.email_body_font_size || undefined,
     template: settings.email_template || undefined,
     orgName,
+    theme: brand.theme,
+    sender: brand.sender,
   });
 
   const filename = `SNR-Brief-${audience}-${session_id.slice(0, 8)}-${date}.eml`;
@@ -847,6 +861,7 @@ router.post('/export/zip', async (req: Request, res: Response) => {
   }
 
   const zipSections = parseSections(settings.report_sections || '');
+  const zipBrand = await resolveBrandForSession(session_id, authReq.teamId);
 
   const eml = buildEml({
     result,
@@ -869,6 +884,8 @@ router.post('/export/zip', async (req: Request, res: Response) => {
     bodyFontSize: settings.email_body_font_size || undefined,
     template: settings.email_template || undefined,
     orgName,
+    theme: zipBrand.theme,
+    sender: zipBrand.sender,
   });
 
   res.setHeader('Content-Type', 'application/zip');

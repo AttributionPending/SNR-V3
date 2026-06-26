@@ -21,6 +21,7 @@ export interface EmailTheme {
   footerText: string;       // '' => use the default (vendor-attribution-aware)
   showVendorAttribution: boolean; // when false, the default footer omits "SNR"
   // Logo
+  logoDataUri: string;      // per-profile logo image ('' => fall back to the legacy logo opt)
   logoAlt: string;
   logoLink: string;         // '' => image is not wrapped in a link
   logoMaxWidth: number;
@@ -42,6 +43,7 @@ export const SNR_DEFAULT_THEME: EmailTheme = {
   headerSubtitle: 'Security Intelligence Brief',
   footerText: '',
   showVendorAttribution: true,
+  logoDataUri: '',
   logoAlt: 'Logo',
   logoLink: '',
   logoMaxWidth: 240,
