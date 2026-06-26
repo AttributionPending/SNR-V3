@@ -236,7 +236,7 @@ export async function getProvider(
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY not configured. Set it in .env or Settings → LLM Provider.');
     }
-    const model = settings.model_name?.trim() || process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
+    const model = settings.model_name?.trim() || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
     const { AnthropicProvider } = await import('./anthropic-provider.js');
     inner = new AnthropicProvider({ apiKey, model });
   }

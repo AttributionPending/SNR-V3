@@ -46,7 +46,7 @@ export class AnthropicProvider implements LLMProvider {
       const status = apiErr?.status;
       if (status === 401) throw new Error('Invalid Anthropic API key — verify ANTHROPIC_API_KEY in your .env file.');
       if (status === 403) throw new Error('API key lacks permission. Check your Anthropic account plan and model access.');
-      if (status === 404) throw new Error(`Model '${this.model}' not found. Set CLAUDE_MODEL in .env to a valid model name (e.g. claude-sonnet-4-5).`);
+      if (status === 404) throw new Error(`Model '${this.model}' not found. Pick a valid model in Settings → LLM Provider, or set CLAUDE_MODEL in .env (e.g. claude-sonnet-4-6).`);
       if (status === 429) throw new Error('Anthropic rate limit reached — wait a moment and try again.');
       if (status === 529) throw new Error('Anthropic API is overloaded — try again in a few seconds.');
       throw new Error(`Anthropic API error (HTTP ${status ?? 'unknown'}): ${(err as Error).message}`);
