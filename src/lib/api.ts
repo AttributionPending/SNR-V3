@@ -337,6 +337,8 @@ export async function fetchEmailStudioPreview(params: {
   branding?: Record<string, string>;
   reportSections?: string;
   emailContentOverrides?: Record<string, string>;
+  theme?: Partial<EmailThemeOverrides>;
+  sender?: Partial<EmailSenderOverrides>;
 }): Promise<string> {
   const res = await authFetch(`${BASE}/analyze/email-studio-preview`, {
     method: 'POST',
@@ -345,6 +347,114 @@ export async function fetchEmailStudioPreview(params: {
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load email preview');
   return res.text();
+}
+
+// ── Brand profiles (white-label themes + sender identity) ────────────────────
+
+/** Visual theme overrides applied to a rendered email (all optional). */
+export interface EmailThemeOverrides {
+  primary: string;
+  secondary: string;
+  pageBg: string;
+  bodyText: string;
+  tableHeaderBg: string;
+  tableHeaderText: string;
+  headerTitle: string;
+  headerSubtitle: string;
+  footerText: string;
+  showVendorAttribution: boolean;
+  logoDataUri: string;
+  logoAlt: string;
+  logoLink: string;
+  logoMaxWidth: number;
+  logoMaxHeight: number;
+  fontFamily: string;
+  bodyFontSize: string;
+  lang: string;
+}
+
+/** Sender identity overrides (From / Reply-To / CC / BCC / preheader / subject). */
+export interface EmailSenderOverrides {
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  cc: string;
+  bcc: string;
+  preheader: string;
+  subjectTemplate: string;
+}
+
+export interface BrandProfile {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  theme: Partial<EmailThemeOverrides>;
+  sender: Partial<EmailSenderOverrides>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ResolvedBrand {
+  profileId: string | null;
+  name: string;
+  theme: Partial<EmailThemeOverrides>;
+  sender: Partial<EmailSenderOverrides>;
+}
+
+export async function listBrandProfiles(): Promise<BrandProfile[]> {
+  const res = await authFetch(`${BASE}/brand-profiles`);
+  if (!res.ok) throw new Error('Failed to load brand profiles');
+  const data = await res.json() as { profiles: BrandProfile[] };
+  return data.profiles;
+}
+
+export async function createBrandProfile(input: {
+  name: string;
+  theme?: Partial<EmailThemeOverrides>;
+  sender?: Partial<EmailSenderOverrides>;
+  isDefault?: boolean;
+}): Promise<string> {
+  const res = await authFetch(`${BASE}/brand-profiles`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to create brand profile');
+  return (await res.json() as { id: string }).id;
+}
+
+export async function updateBrandProfile(id: string, patch: {
+  name?: string;
+  theme?: Partial<EmailThemeOverrides>;
+  sender?: Partial<EmailSenderOverrides>;
+  isDefault?: boolean;
+}): Promise<void> {
+  const res = await authFetch(`${BASE}/brand-profiles/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update brand profile');
+}
+
+export async function deleteBrandProfile(id: string): Promise<void> {
+  const res = await authFetch(`${BASE}/brand-profiles/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to delete brand profile');
+}
+
+export async function fetchSessionBrand(sessionId: string): Promise<ResolvedBrand> {
+  const res = await authFetch(`${BASE}/brand-profiles/session/${sessionId}`);
+  if (!res.ok) throw new Error('Failed to resolve session brand');
+  return res.json() as Promise<ResolvedBrand>;
+}
+
+export async function setSessionBrandProfile(sessionId: string, profileId: string | null): Promise<void> {
+  const res = await authFetch(`${BASE}/brand-profiles/session/${sessionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileId }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to set session brand');
 }
 
 export async function exportStix(sessionId: string, tlp: string): Promise<void> {

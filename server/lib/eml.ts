@@ -2,6 +2,7 @@ import type { AnalysisResult } from './claude.js';
 import { defang } from './defang.js';
 import { type BriefSection, DEFAULT_SECTIONS, AUTO_TYPES } from './sections.js';
 import { resolveTheme, type EmailTheme } from './email-theme.js';
+import type { EmailSender } from './brand-profiles.js';
 
 type TLPLevel = 'CLEAR' | 'GREEN' | 'AMBER' | 'AMBER+STRICT' | 'RED';
 
@@ -111,6 +112,10 @@ interface EmlOptions {
   template?: string;
   /** Org name, for the {org_name} template field token */
   orgName?: string;
+  /** White-label theme overrides (brand profile). */
+  theme?: Partial<EmailTheme>;
+  /** Sender identity (From/Reply-To/CC/BCC/preheader/subject). */
+  sender?: EmailSender;
 }
 
 export function buildEml(opts: EmlOptions): string {
@@ -125,8 +130,35 @@ export function buildEml(opts: EmlOptions): string {
   const boundary = `SNR_BOUNDARY_${Date.now()}`;
   const htmlBoundary = `SNR_HTML_${Date.now()}`;
 
-  const ccList = opts.ccMap?.[audience] ?? [];
+  const sender = opts.sender;
+  // Merge configured CC (per-audience map) with the brand profile's CC list.
+  const ccList = [
+    ...(opts.ccMap?.[audience] ?? []),
+    ...(sender?.cc ? sender.cc.split(',').map((s) => s.trim()).filter(Boolean) : []),
+  ];
   const ccHeader = ccList.length > 0 ? `CC: ${ccList.join(', ')}\r\n` : '';
+  const bccHeader = sender?.bcc?.trim() ? `BCC: ${sender.bcc.trim()}\r\n` : '';
+  const replyToHeader = sender?.replyTo?.trim() ? `Reply-To: ${sender.replyTo.trim()}\r\n` : '';
+
+  const fromName = sender?.fromName?.trim() || analystName;
+  const fromEmail = sender?.fromEmail?.trim() || analystEmail;
+
+  // Subject: optional sender template with field tokens, else the AI subject.
+  const subject = sender?.subjectTemplate?.trim()
+    ? sender.subjectTemplate.trim().replace(/\{([a-z_]+)\}/g, (m, k: string) => {
+        const map: Record<string, string> = {
+          date: new Date().toISOString().split('T')[0],
+          tlp,
+          severity: String(email.severity_badge ?? ''),
+          audience: audienceLabel,
+          org_name: opts.orgName ?? '',
+          incident_title: result.incident_summary?.title ?? '',
+          threat_actor_name: result.threat_actor?.name ?? '',
+          confidence: result.incident_summary?.confidence ?? '',
+        };
+        return k in map ? map[k] : m;
+      })
+    : (email.subject as string);
 
   const primaryColor = opts.primaryColor || '#1d4ed8';
   const secondaryColor = opts.secondaryColor || '#0a0f1e';
@@ -149,6 +181,8 @@ export function buildEml(opts: EmlOptions): string {
     template: opts.template,
     orgName: opts.orgName,
     analystName: opts.analystName,
+    theme: opts.theme,
+    preheader: sender?.preheader,
   });
 
   const plainText = buildPlainText({
@@ -164,10 +198,12 @@ export function buildEml(opts: EmlOptions): string {
   const headers = [
     `MIME-Version: 1.0`,
     `Date: ${new Date().toUTCString()}`,
-    `From: ${analystName} <${analystEmail}>`,
+    `From: ${fromName} <${fromEmail}>`,
     `To: `,
+    replyToHeader.trim(),
     ccHeader.trim(),
-    `Subject: ${email.subject}`,
+    bccHeader.trim(),
+    `Subject: ${subject}`,
     `X-Unsent: 1`,
     `X-Mozilla-Draft-Info: internal/draft`,
     `X-SNR-TLP: TLP:${tlp}`,
@@ -300,6 +336,8 @@ export function buildHtmlBody(opts: {
   /** White-label theme overrides (brand profile). Falls back to the legacy
    * primaryColor/secondaryColor/headerText/footerText/fontFamily opts. */
   theme?: Partial<EmailTheme>;
+  /** Inbox preview text (hidden in the body). */
+  preheader?: string;
 }): string {
   const { email, audienceLabel, tlp, tlpColor, severityColor, result } = opts;
   const sections = opts.sections ?? DEFAULT_SECTIONS;
@@ -316,6 +354,7 @@ export function buildHtmlBody(opts: {
   });
   const primaryColor = T.primary;
   const secondaryColor = T.secondary;
+  const logoDataUri = T.logoDataUri || opts.logoDataUri || '';
 
   const headerTitle = T.headerTitle;
   const footerLine = T.footerText.trim()
@@ -645,7 +684,8 @@ export function buildHtmlBody(opts: {
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <title>${displayTitle}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#eef0f3;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body style="margin:0;padding:0;background-color:#eef0f3;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">${opts.preheader?.trim() ? `
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#eef0f3;">${esc(opts.preheader.trim())}</div>` : ''}
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0" bgcolor="#eef0f3" style="background-color:#eef0f3;min-width:100%;">
@@ -675,8 +715,8 @@ export function buildHtmlBody(opts: {
         <td bgcolor="${esc(secondaryColor)}" style="background-color:${esc(secondaryColor)};padding:28px 24px 26px 24px;">
           <table width="100%" border="0" cellpadding="0" cellspacing="0">
             <tr>
-              <td valign="top">${opts.logoDataUri ? `
-                ${T.logoLink ? `<a href="${esc(T.logoLink)}" target="_blank" style="text-decoration:none;">` : ''}<img src="${esc(opts.logoDataUri)}" alt="${esc(T.logoAlt)}" width="${T.logoMaxWidth}" height="${T.logoMaxHeight}" style="width:${T.logoMaxWidth}px;height:auto;max-height:${T.logoMaxHeight}px;max-width:${T.logoMaxWidth}px;display:block;margin-bottom:12px;object-fit:contain;" />${T.logoLink ? '</a>' : ''}` : ''}
+              <td valign="top">${logoDataUri ? `
+                ${T.logoLink ? `<a href="${esc(T.logoLink)}" target="_blank" style="text-decoration:none;">` : ''}<img src="${esc(logoDataUri)}" alt="${esc(T.logoAlt)}" width="${T.logoMaxWidth}" height="${T.logoMaxHeight}" style="width:${T.logoMaxWidth}px;height:auto;max-height:${T.logoMaxHeight}px;max-width:${T.logoMaxWidth}px;display:block;margin-bottom:12px;object-fit:contain;" />${T.logoLink ? '</a>' : ''}` : ''}
                 <p style="margin:0 0 8px 0;color:#475569;font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:bold;letter-spacing:3px;text-transform:uppercase;">${esc(headerTitle)}</p>
                 <p style="margin:0 0 20px 0;color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;line-height:1.3;">${displayTitle}</p>
                 <table border="0" cellpadding="0" cellspacing="0">

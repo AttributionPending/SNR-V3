@@ -16,6 +16,7 @@ import TagEditor from './TagEditor';
 import ThreatActorAssignDialog from './ThreatActorAssignDialog';
 import ConfirmDialog from './ConfirmDialog';
 import RichTextEditor from './RichTextEditor';
+import EmailStudio from './EmailStudio';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -125,6 +126,7 @@ export default function WorkflowCanvas({
   const [attachDiagram, setAttachDiagram] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [emailStudioOpen, setEmailStudioOpen] = useState(false);
   const [editedEmail, setEditedEmail] = useState<EmailContent | null>(null);
   const [sections, setSections] = useState<BriefSection[]>(DEFAULT_SECTIONS);
   const [severityOverride, setSeverityOverride] = useState<string | null>(null);
@@ -541,7 +543,7 @@ export default function WorkflowCanvas({
                 {tab === 'email' && <Mail className="w-3 h-3" />}
                 {tab === 'stix' && <Shield className="w-3 h-3" />}
                 {tab === 'navigator' && <Map className="w-3 h-3" />}
-                {tab === 'email' ? 'Report' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'email' ? 'Email' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
@@ -583,6 +585,13 @@ export default function WorkflowCanvas({
                 {isEditingEmail
                   ? <><Eye className="w-2.5 h-2.5" />Preview</>
                   : <><Pencil className="w-2.5 h-2.5" />Edit</>}
+              </button>
+              <button
+                onClick={() => setEmailStudioOpen(true)}
+                className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                title="Open the full-screen Email Studio — live preview + edit content, layout, branding, and sections"
+              >
+                <Maximize2 className="w-2.5 h-2.5" />Email Studio
               </button>
             </div>
           )}
@@ -1031,6 +1040,21 @@ export default function WorkflowCanvas({
         onConfirm={() => { setShowReanalyzeConfirm(false); onReanalyze?.(audience); }}
         onCancel={() => setShowReanalyzeConfirm(false)}
       />
+
+      {/* Full-screen Email Studio */}
+      {emailStudioOpen && sessionId && result && editedEmail && (
+        <EmailStudio
+          open={emailStudioOpen}
+          onClose={() => setEmailStudioOpen(false)}
+          sessionId={sessionId}
+          result={result}
+          audience={audience}
+          tlp={tlp}
+          email={editedEmail}
+          onContentChange={setEmailField}
+          onShowToast={onShowToast}
+        />
+      )}
     </main>
   );
 }
