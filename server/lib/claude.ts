@@ -4,6 +4,7 @@ import {
   buildEmailSchema,
   buildSectionGuidance,
 } from './sections.js';
+import { extractReferences } from './references.js';
 import { getProvider } from './providers/index.js';
 import type { JsonSchema, RetryOptions } from './providers/index.js';
 import logger from './logger.js';
@@ -473,7 +474,6 @@ Structure the brief as an intelligence document:
 - Threat Summary contains three subsections in order: Attack Overview, Technical Analysis, and Impact Assessment
 - For MITRE ATT&CK Mapping: list each T-code with a brief statement explaining how it was specifically applied in this incident
 - Behavioral Indicators: describe observable patterns and anomalies in 1-3 paragraphs
-- References: cite all source reports, feeds, and CVEs used
 - Distribution Information: state TLP handling and authorized recipients`;
   }
 
@@ -503,6 +503,13 @@ Structure the brief as an intelligence document:
     { totalDurationMs: totalDuration },
     `Analysis complete — total LLM time: ${(totalDuration / 1000).toFixed(1)}s`
   );
+
+  // References are populated deterministically from the analyst's provided input
+  // (URLs / CVEs / Reference: lines), never by the LLM — and IOC URLs are excluded.
+  if (sections.some((s) => s.enabled && s.key === 'references')) {
+    const providedInput = [input.siem, input.log, input.text].filter(Boolean).join('\n\n');
+    emailContent.references = extractReferences(providedInput, technical.iocs.map((i) => i.value));
+  }
 
   return { ...technical, email_content: emailContent };
 }
