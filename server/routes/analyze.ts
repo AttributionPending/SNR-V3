@@ -199,6 +199,94 @@ router.post('/email-preview', async (req: Request, res: Response) => {
   res.send(html);
 });
 
+// POST /api/analyze/email-studio-preview — render the REAL session email as HTML,
+// applying in-progress (unsaved) overrides so the Email Studio previews edits live.
+router.post('/email-studio-preview', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const { session_id, tlp = 'AMBER', audience = 'soc', template, branding, reportSections, emailContentOverrides } =
+    (req.body ?? {}) as {
+      session_id?: string;
+      tlp?: string;
+      audience?: string;
+      template?: string;
+      branding?: Record<string, string>;
+      reportSections?: string;
+      emailContentOverrides?: Record<string, string>;
+    };
+
+  if (!session_id) {
+    res.status(400).json({ error: 'session_id required' });
+    return;
+  }
+  if (!(await verifySessionTeam(req, res, session_id))) return;
+
+  const db = getDb();
+  const row = (await db
+    .prepare('SELECT result_json, analyst_overrides FROM analysis_results WHERE session_id = ? ORDER BY version DESC LIMIT 1')
+    .get(session_id)) as { result_json: string; analyst_overrides?: string } | undefined;
+  if (!row) {
+    res.status(409).json({ error: 'Session has no completed analysis to preview' });
+    return;
+  }
+  let result: AnalysisResult;
+  try {
+    result = JSON.parse(row.result_json) as AnalysisResult;
+  } catch {
+    res.status(500).json({ error: 'Stored analysis data is corrupted' });
+    return;
+  }
+
+  const settings = await loadMergedSettings(authReq.teamId);
+  // In-progress branding overrides win over saved team settings.
+  const m: Record<string, string> = { ...settings, ...(branding && typeof branding === 'object' ? branding : {}) };
+  const sections = parseSections((typeof reportSections === 'string' ? reportSections : settings.report_sections) || '');
+
+  // Real email content = AI output + saved analyst overrides + in-progress edits.
+  let savedOverrides: Record<string, string> = {};
+  try {
+    savedOverrides = row.analyst_overrides ? JSON.parse(row.analyst_overrides) : {};
+  } catch { /* ignore */ }
+  const email = {
+    ...result.email_content,
+    ...savedOverrides,
+    ...(emailContentOverrides && typeof emailContentOverrides === 'object' ? emailContentOverrides : {}),
+  } as AnalysisResult['email_content'];
+
+  const tlpColor = PREVIEW_TLP_COLORS[tlp] ?? '#d97706';
+  const sev = String(email.severity_badge ?? result.incident_summary?.severity ?? '');
+  const severityColor = PREVIEW_SEVERITY_COLORS[sev] ?? '#374151';
+  const severityBg = PREVIEW_SEVERITY_BG[sev] ?? '#f9fafb';
+  const audienceLabel = PREVIEW_AUDIENCE_LABELS[audience] ?? audience;
+
+  const html = buildHtmlBody({
+    email,
+    audienceLabel,
+    tlp,
+    tlpColor,
+    tlpTextColor: '#ffffff',
+    severityColor,
+    severityBg,
+    result,
+    sections,
+    headerText: m.email_header_text,
+    footerText: m.email_footer_text,
+    signature: m.email_signature,
+    customPreamble: m.email_custom_preamble,
+    audienceIntro: m[`custom_intro_${audience}`],
+    primaryColor: sanitizeColor(m.email_primary_color),
+    secondaryColor: sanitizeColor(m.email_secondary_color),
+    logoDataUri: m.email_logo_data || undefined,
+    fontFamily: m.email_font_family || undefined,
+    bodyFontSize: m.email_body_font_size || undefined,
+    template: (typeof template === 'string' ? template : m.email_template) || undefined,
+    orgName: m.org_name || '',
+    analystName: m.analyst_name || '',
+  });
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
 // POST /api/analyze — main analysis endpoint (SSE streaming)
 router.post('/', upload.single('logFile'), async (req: Request, res: Response) => {
   try {
