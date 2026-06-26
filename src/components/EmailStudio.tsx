@@ -31,14 +31,17 @@ type SenderDraft = Partial<EmailSenderOverrides>;
 interface Props {
   open: boolean;
   onClose: () => void;
-  sessionId: string;
-  result: AnalysisResult;
+  /** Per-session context. Omitted in standalone mode (launched from Settings). */
+  sessionId?: string;
+  result?: AnalysisResult;
   audience: string;
   tlp: TLPLevel;
   /** Shared per-session email content (RightPanel's editedEmail). */
-  email: EmailContent;
-  onContentChange: (key: string, value: string) => void;
+  email?: EmailContent;
+  onContentChange?: (key: string, value: string) => void;
   onShowToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
+  /** Standalone = team-wide branding/templates/brand-profiles only, sample preview, no session. */
+  standalone?: boolean;
 }
 
 function readFileAsDataUri(file: File): Promise<string> {
@@ -50,8 +53,9 @@ function readFileAsDataUri(file: File): Promise<string> {
   });
 }
 
-export default function EmailStudio({ open, onClose, sessionId, result, audience, tlp, email, onContentChange, onShowToast }: Props) {
-  const [tab, setTab] = useState<StudioTab>('content');
+export default function EmailStudio({ open, onClose, sessionId, result, audience, tlp, email, onContentChange, onShowToast, standalone }: Props) {
+  const isStandalone = standalone || !sessionId;
+  const [tab, setTab] = useState<StudioTab>(isStandalone ? 'brand' : 'content');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -81,7 +85,8 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
     Promise.all([
       api.fetchSettings(),
       api.listBrandProfiles().catch(() => [] as BrandProfile[]),
-      api.fetchSessionBrand(sessionId).catch(() => null),
+      // No session in standalone mode — fall back to the team default profile.
+      sessionId ? api.fetchSessionBrand(sessionId).catch(() => null) : Promise.resolve(null),
     ])
       .then(([s, profs, brand]) => {
         setTemplateDraft(s.email_template ?? '');
@@ -92,7 +97,8 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
         setSections(parseSections(s.report_sections ?? ''));
 
         setProfiles(profs);
-        const activeId = brand?.profileId ?? null;
+        // Session mode → the session's resolved profile; standalone → the team default.
+        const activeId = brand?.profileId ?? (profs.find((p) => p.isDefault)?.id ?? null);
         setActiveProfileId(activeId);
         const active = activeId ? profs.find((p) => p.id === activeId) : undefined;
         setProfileName(active?.name ?? '');
@@ -117,7 +123,7 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
           template: templateDraft,
           branding,
           reportSections: JSON.stringify(sections),
-          emailContentOverrides: email as unknown as Record<string, string>,
+          emailContentOverrides: email ? (email as unknown as Record<string, string>) : undefined,
           theme: themeDraft,
           sender: senderDraft,
         });
@@ -249,24 +255,28 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
   async function handleSave() {
     setSaving(true);
     try {
-      const current = (await api.fetchSession(sessionId)).analystOverrides ?? {};
-      const overrides: Record<string, string> = { ...current };
-      const contentKeys = ['subject', ...sections.map((s) => s.key)];
-      for (const k of contentKeys) {
-        const edited = email[k] as string | undefined;
-        const original = result.email_content[k] as string | undefined;
-        if (edited !== undefined && edited !== original) overrides[k] = edited;
-        else if (k in overrides && edited === original) delete overrides[k];
+      // Per-session content overrides (skipped in standalone — no session/content).
+      if (sessionId && email && result) {
+        const current = (await api.fetchSession(sessionId)).analystOverrides ?? {};
+        const overrides: Record<string, string> = { ...current };
+        const contentKeys = ['subject', ...sections.map((s) => s.key)];
+        for (const k of contentKeys) {
+          const edited = email[k] as string | undefined;
+          const original = result.email_content[k] as string | undefined;
+          if (edited !== undefined && edited !== original) overrides[k] = edited;
+          else if (k in overrides && edited === original) delete overrides[k];
+        }
+        await api.saveOverrides(sessionId, overrides);
       }
-      await api.saveOverrides(sessionId, overrides);
 
+      // Team-wide branding / template / sections.
       await api.saveSettings({
         email_template: templateDraft,
         report_sections: JSON.stringify(sections),
         ...branding,
       });
 
-      // Persist the active brand profile's theme/sender, then the session selection.
+      // Persist the active brand profile's theme/sender (team-wide)…
       if (activeProfileId) {
         await api.updateBrandProfile(activeProfileId, {
           name: profileName.trim() || undefined,
@@ -274,7 +284,8 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
           sender: senderDraft,
         });
       }
-      await api.setSessionBrandProfile(sessionId, activeProfileId);
+      // …then the session's profile selection (session mode only).
+      if (sessionId) await api.setSessionBrandProfile(sessionId, activeProfileId);
 
       onShowToast?.('Email saved', 'success');
     } catch (e) {
@@ -285,6 +296,7 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
   }
 
   async function handleDownloadEml() {
+    if (!sessionId || !email) return;
     try {
       const overrides: Record<string, string> = {};
       const contentKeys = ['subject', 'severity_badge', ...sections.map((s) => s.key)];
@@ -311,14 +323,18 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
           <Mail className="w-4 h-4 text-cyan-400" />
           <h2 className="text-sm font-semibold text-foreground">Email Studio</h2>
           <span className="text-[11px] text-muted-foreground">
-            {AUDIENCE_LABELS[audience as AudienceType] ?? audience} · TLP:{tlp}
+            {isStandalone
+              ? 'Team branding & templates · sample preview'
+              : `${AUDIENCE_LABELS[audience as AudienceType] ?? audience} · TLP:${tlp}`}
           </span>
           {previewLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5" onClick={handleDownloadEml}>
-            <Download className="w-3.5 h-3.5" /> Download .eml
-          </Button>
+          {!isStandalone && (
+            <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5" onClick={handleDownloadEml}>
+              <Download className="w-3.5 h-3.5" /> Download .eml
+            </Button>
+          )}
           <Button variant="cyan" size="sm" className="text-xs h-7 gap-1.5" onClick={handleSave} disabled={saving || loading}>
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save
           </Button>
@@ -372,15 +388,15 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
 
         {/* Editor */}
         <div className="w-[440px] flex-shrink-0 border-l border-border flex flex-col bg-navy-900/40">
-          {/* Tabs */}
-          <div className="grid grid-cols-5 border-b border-border flex-shrink-0">
-            {([
+          {/* Tabs — Content is per-session, hidden in standalone mode. */}
+          <div className={cn('grid border-b border-border flex-shrink-0', isStandalone ? 'grid-cols-4' : 'grid-cols-5')}>
+            {(([
               ['content', 'Content', FileText],
               ['layout', 'Layout', LayoutTemplate],
               ['brand', 'Brand Kit', Sparkles],
               ['defaults', 'Defaults', Palette],
               ['sections', 'Sections', ListChecks],
-            ] as const).map(([id, label, Icon]) => (
+            ] as const).filter(([id]) => !(isStandalone && id === 'content'))).map(([id, label, Icon]) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
@@ -402,14 +418,14 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
                 <Field label="Subject">
                   <input
                     type="text"
-                    value={(email.subject as string) ?? ''}
-                    onChange={(e) => onContentChange('subject', e.target.value)}
+                    value={(email?.subject as string) ?? ''}
+                    onChange={(e) => onContentChange?.('subject', e.target.value)}
                     className="w-full bg-secondary/40 border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
                   />
                 </Field>
                 {editableSections.map((s) => (
                   <Field key={s.key} label={s.label} hint={!s.enabled ? 'hidden in current sections' : undefined}>
-                    <RichTextEditor value={(email[s.key] as string) ?? ''} onChange={(v) => onContentChange(s.key, v)} />
+                    <RichTextEditor value={(email?.[s.key] as string) ?? ''} onChange={(v) => onContentChange?.(s.key, v)} />
                   </Field>
                 ))}
                 <p className="text-[10px] text-muted-foreground/60">
@@ -428,8 +444,10 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
               !activeProfileId ? (
                 <div className="text-[11px] text-muted-foreground space-y-3 py-2">
                   <p>
-                    This session uses the <span className="text-foreground font-medium">SNR default theme</span> (or the team's
-                    default brand). Create a brand profile to white-label colors, logo, chrome, and the sender identity for a
+                    {isStandalone
+                      ? 'No brand profile selected — the SNR default theme (or the team default brand) is in effect.'
+                      : "This session uses the SNR default theme (or the team's default brand)."}{' '}
+                    Create a brand profile to white-label colors, logo, chrome, and the sender identity for a
                     specific client or tenant.
                   </p>
                   <Button variant="cyan" size="sm" className="text-xs h-7 gap-1.5" onClick={handleNewProfile}>

@@ -330,7 +330,7 @@ export async function fetchEmailTemplatePreview(params: {
 
 /** Render the REAL session email as HTML, applying in-progress (unsaved) edits. */
 export async function fetchEmailStudioPreview(params: {
-  session_id: string;
+  session_id?: string;
   audience?: string;
   tlp?: string;
   template?: string;

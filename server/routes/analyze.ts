@@ -218,48 +218,65 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
       sender?: Partial<EmailSender>;
     };
 
-  if (!session_id) {
-    res.status(400).json({ error: 'session_id required' });
-    return;
-  }
-  if (!(await verifySessionTeam(req, res, session_id))) return;
-
-  const db = getDb();
-  const row = (await db
-    .prepare('SELECT result_json, analyst_overrides FROM analysis_results WHERE session_id = ? ORDER BY version DESC LIMIT 1')
-    .get(session_id)) as { result_json: string; analyst_overrides?: string } | undefined;
-  if (!row) {
-    res.status(409).json({ error: 'Session has no completed analysis to preview' });
-    return;
-  }
-  let result: AnalysisResult;
-  try {
-    result = JSON.parse(row.result_json) as AnalysisResult;
-  } catch {
-    res.status(500).json({ error: 'Stored analysis data is corrupted' });
-    return;
-  }
-
   const settings = await loadMergedSettings(authReq.teamId);
   // In-progress branding overrides win over saved team settings.
   const m: Record<string, string> = { ...settings, ...(branding && typeof branding === 'object' ? branding : {}) };
   const sections = parseSections((typeof reportSections === 'string' ? reportSections : settings.report_sections) || '');
 
-  // Resolve the session's brand profile, then layer in-progress edits on top.
-  const brand = await resolveBrandForSession(session_id, authReq.teamId);
-  const effectiveTheme = { ...brand.theme, ...(themeOverride ?? {}) };
-  const effectiveSender = { ...brand.sender, ...(senderOverride ?? {}) };
+  // Two modes:
+  //  • session mode — render the real session email (brand resolved from the session)
+  //  • sample mode (no session_id) — render SAMPLE data so the Email Studio can be
+  //    opened standalone from Settings on a fresh deployment with no sessions yet.
+  let result: AnalysisResult;
+  let email: AnalysisResult['email_content'];
+  let brandTheme: Partial<EmailTheme>;
+  let brandSender: Partial<EmailSender>;
 
-  // Real email content = AI output + saved analyst overrides + in-progress edits.
-  let savedOverrides: Record<string, string> = {};
-  try {
-    savedOverrides = row.analyst_overrides ? JSON.parse(row.analyst_overrides) : {};
-  } catch { /* ignore */ }
-  const email = {
-    ...result.email_content,
-    ...savedOverrides,
-    ...(emailContentOverrides && typeof emailContentOverrides === 'object' ? emailContentOverrides : {}),
-  } as AnalysisResult['email_content'];
+  if (session_id) {
+    if (!(await verifySessionTeam(req, res, session_id))) return;
+    const db = getDb();
+    const row = (await db
+      .prepare('SELECT result_json, analyst_overrides FROM analysis_results WHERE session_id = ? ORDER BY version DESC LIMIT 1')
+      .get(session_id)) as { result_json: string; analyst_overrides?: string } | undefined;
+    if (!row) {
+      res.status(409).json({ error: 'Session has no completed analysis to preview' });
+      return;
+    }
+    try {
+      result = JSON.parse(row.result_json) as AnalysisResult;
+    } catch {
+      res.status(500).json({ error: 'Stored analysis data is corrupted' });
+      return;
+    }
+    // Resolve the session's brand profile, then layer in-progress edits on top.
+    const brand = await resolveBrandForSession(session_id, authReq.teamId);
+    brandTheme = brand.theme;
+    brandSender = brand.sender;
+
+    // Real email content = AI output + saved analyst overrides + in-progress edits.
+    let savedOverrides: Record<string, string> = {};
+    try {
+      savedOverrides = row.analyst_overrides ? JSON.parse(row.analyst_overrides) : {};
+    } catch { /* ignore */ }
+    email = {
+      ...result.email_content,
+      ...savedOverrides,
+      ...(emailContentOverrides && typeof emailContentOverrides === 'object' ? emailContentOverrides : {}),
+    } as AnalysisResult['email_content'];
+  } else {
+    // Sample mode — the standalone editor sends the active profile's theme/sender
+    // as overrides, so we start from an empty brand base.
+    result = SAMPLE_PREVIEW_RESULT;
+    brandTheme = {};
+    brandSender = {};
+    email = {
+      ...SAMPLE_PREVIEW_EMAIL,
+      ...(emailContentOverrides && typeof emailContentOverrides === 'object' ? emailContentOverrides : {}),
+    } as AnalysisResult['email_content'];
+  }
+
+  const effectiveTheme = { ...brandTheme, ...(themeOverride ?? {}) };
+  const effectiveSender = { ...brandSender, ...(senderOverride ?? {}) };
 
   const tlpColor = PREVIEW_TLP_COLORS[tlp] ?? '#d97706';
   const sev = String(email.severity_badge ?? result.incident_summary?.severity ?? '');
