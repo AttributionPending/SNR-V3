@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Download, Package, Mail, Map, Shield, Pencil, Eye, RotateCcw, ChevronLeft, ChevronRight, FileText, Radar, GitPullRequest } from 'lucide-react';
+import { Download, Package, Mail, Map, Shield, RotateCcw, ChevronLeft, ChevronRight, FileText, Radar, GitPullRequest, Maximize2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { cn } from '@/lib/utils';
-import { TLP_BAND_COLORS, SEVERITY_BAND } from '@/lib/constants';
 import type { AnalysisResult, AudienceType, TLPLevel, EmailContent } from '@/types';
 import { AUDIENCE_LABELS } from '@/types';
 import * as api from '@/lib/api';
 import { exportPdf } from '@/lib/pdf-export';
+import EmailStudio from './EmailStudio';
 
 const TLP_OPTIONS: TLPLevel[] = ['CLEAR', 'GREEN', 'AMBER', 'AMBER+STRICT', 'RED'];
 const TLP_COLORS: Record<TLPLevel, string> = {
@@ -41,14 +41,14 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
   const [exporting, setExporting] = useState<string | null>(null);
 
   // Email editing state
-  const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [editedEmail, setEditedEmail] = useState<EmailContent | null>(null);
+  const [emailStudioOpen, setEmailStudioOpen] = useState(false);
+  const [emailHtml, setEmailHtml] = useState('');
 
   // Sync editedEmail when result changes (new session or new analysis)
   useEffect(() => {
     if (result?.email_content) {
       setEditedEmail({ ...result.email_content });
-      setIsEditingEmail(false);
     } else {
       setEditedEmail(null);
     }
@@ -112,7 +112,27 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
   };
 
   const disabled = !sessionId || !result;
-  const displayEmail = editedEmail ?? result?.email_content;
+
+  // Live, real rendered email preview for the in-tab view (debounced). Uses saved
+  // team template/branding; applies the current in-memory content edits.
+  useEffect(() => {
+    if (!sessionId || !result || !editedEmail) {
+      setEmailHtml('');
+      return;
+    }
+    const t = setTimeout(() => {
+      api.fetchEmailStudioPreview({
+        session_id: sessionId,
+        audience,
+        tlp,
+        emailContentOverrides: editedEmail as unknown as Record<string, string>,
+      })
+        .then(setEmailHtml)
+        .catch(() => { /* preview is best-effort */ });
+    }, 250);
+    return () => clearTimeout(t);
+    // emailStudioOpen included so closing the Studio refetches with saved branding.
+  }, [sessionId, result, editedEmail, audience, tlp, emailStudioOpen]);
 
   // ── Collapsed icon strip ──────────────────────────────────────────────────
   if (collapsed) {
@@ -214,7 +234,7 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
 
           {/* Email Tab */}
           <TabsContent value="email" className="flex-1 flex flex-col px-3 pb-3 mt-2">
-            {/* Edit / Preview toolbar */}
+            {/* Toolbar */}
             {!disabled && (
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1">
@@ -223,9 +243,7 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
                       Edited
                     </span>
                   )}
-                </div>
-                <div className="flex items-center gap-1">
-                  {hasEdits && !isEditingEmail && (
+                  {hasEdits && (
                     <button
                       onClick={handleResetEmail}
                       className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-secondary/50"
@@ -234,32 +252,28 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
                       <RotateCcw className="w-2.5 h-2.5" />Reset
                     </button>
                   )}
-                  <button
-                    onClick={() => setIsEditingEmail(!isEditingEmail)}
-                    className={cn(
-                      'flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors',
-                      isEditingEmail
-                        ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
-                        : 'border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                    )}
-                  >
-                    {isEditingEmail
-                      ? <><Eye className="w-2.5 h-2.5" />Preview</>
-                      : <><Pencil className="w-2.5 h-2.5" />Edit</>
-                    }
-                  </button>
                 </div>
+                <button
+                  onClick={() => setEmailStudioOpen(true)}
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                  title="Open the full-screen Email Studio (edit content, layout, branding, sections)"
+                >
+                  <Maximize2 className="w-2.5 h-2.5" />Email Studio
+                </button>
               </div>
             )}
 
             {disabled ? (
               <EmptyState message="Run an analysis to generate stakeholder emails." />
-            ) : isEditingEmail && editedEmail ? (
-              <EmailEditor email={editedEmail} onChange={setEmailField} audience={audience} tlp={tlp} />
-            ) : displayEmail ? (
-              <EmailPreview email={displayEmail} audience={audience} tlp={tlp} />
+            ) : emailHtml ? (
+              <iframe
+                title="Email preview"
+                srcDoc={emailHtml}
+                sandbox=""
+                className="flex-1 min-h-0 w-full rounded-lg border border-border bg-white"
+              />
             ) : (
-              <EmptyState message="No email content generated yet." />
+              <EmptyState message="Rendering email preview…" />
             )}
 
             <div className="mt-3 space-y-2">
@@ -473,105 +487,28 @@ export default function RightPanel({ sessionId, result, audience, onAudienceChan
           {exporting === 'zip' ? 'Packaging…' : 'Export All (.zip)'}
         </Button>
       </div>
+
+      {emailStudioOpen && sessionId && result && editedEmail && (
+        <EmailStudio
+          open={emailStudioOpen}
+          onClose={() => setEmailStudioOpen(false)}
+          sessionId={sessionId}
+          result={result}
+          audience={audience}
+          tlp={tlp}
+          email={editedEmail}
+          onContentChange={setEmailField}
+          onShowToast={onShowToast}
+        />
+      )}
     </aside>
   );
 }
-
-// ── Email Editor ─────────────────────────────────────────────────────────────
-
-function EmailEditor({
-  email,
-  onChange,
-  audience,
-  tlp,
-}: {
-  email: EmailContent;
-  onChange: (key: string, value: string) => void;
-  audience: string;
-  tlp: TLPLevel;
-}) {
-  const TLP_BAND_COLORS: Record<string, string> = {
-    CLEAR: 'bg-gray-200 text-gray-900',
-    GREEN: 'bg-green-600 text-white',
-    AMBER: 'bg-yellow-500 text-white',
-    'AMBER+STRICT': 'bg-orange-500 text-white',
-    RED: 'bg-red-600 text-white',
-  };
-
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-cyan-500/30 bg-navy-950 text-xs">
-      <div className={cn('py-1 text-center text-[10px] font-bold tracking-widest', TLP_BAND_COLORS[tlp])}>
-        TLP:{tlp}
-      </div>
-      <div className="px-2 py-2 bg-navy-800 border-b border-border text-[9px] text-muted-foreground flex items-center justify-between">
-        <span className="text-cyan-400 font-medium">✏ Edit Mode — changes apply to exported .eml and .zip</span>
-        <span>FOR: {AUDIENCE_LABELS[audience as AudienceType] ?? audience}</span>
-      </div>
-      <div className="p-3 space-y-3">
-        <EditField label="Subject">
-          <input
-            type="text"
-            value={email.subject as string ?? ''}
-            onChange={(e) => onChange('subject', e.target.value)}
-            className="w-full bg-secondary/30 border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
-          />
-        </EditField>
-        <p className="text-[9px] text-muted-foreground/60 pb-1">
-          Additional fields are dynamically rendered based on your configured brief sections.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function EditField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <div className="text-[9px] uppercase tracking-wide text-cyan-400/70 font-medium">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-// ── Email Preview ─────────────────────────────────────────────────────────────
 
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex-1 flex items-center justify-center text-center text-muted-foreground text-xs p-4 border border-dashed border-border rounded-lg">
       {message}
-    </div>
-  );
-}
-
-
-function EmailPreview({ email, audience, tlp }: {
-  email: AnalysisResult['email_content'];
-  audience: string;
-  tlp: TLPLevel;
-}) {
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-border bg-navy-950 text-xs">
-      <div className={cn('py-1 text-center text-[10px] font-bold tracking-widest', TLP_BAND_COLORS[tlp],
-        tlp === 'CLEAR' ? 'text-gray-900' : 'text-white')}>
-        TLP:{tlp}
-      </div>
-      <div className="px-3 py-2.5 bg-navy-800 border-b border-border">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Subject</div>
-            <div className="text-xs text-foreground font-medium leading-tight mt-0.5">{email.subject as string}</div>
-          </div>
-          <div className={cn('text-[10px] px-2 py-0.5 rounded font-bold flex-shrink-0', SEVERITY_BAND[email.severity_badge as string])}>
-            {email.severity_badge as string}
-          </div>
-        </div>
-        <div className="mt-1.5 text-[9px] text-muted-foreground">
-          FOR: {AUDIENCE_LABELS[audience as AudienceType] ?? audience}
-        </div>
-      </div>
-      <div className="p-3 space-y-3 text-xs text-muted-foreground">
-        Content rendered from configured brief sections.
-      </div>
     </div>
   );
 }

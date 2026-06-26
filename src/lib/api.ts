@@ -328,6 +328,25 @@ export async function fetchEmailTemplatePreview(params: {
   return res.text();
 }
 
+/** Render the REAL session email as HTML, applying in-progress (unsaved) edits. */
+export async function fetchEmailStudioPreview(params: {
+  session_id: string;
+  audience?: string;
+  tlp?: string;
+  template?: string;
+  branding?: Record<string, string>;
+  reportSections?: string;
+  emailContentOverrides?: Record<string, string>;
+}): Promise<string> {
+  const res = await authFetch(`${BASE}/analyze/email-studio-preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load email preview');
+  return res.text();
+}
+
 export async function exportStix(sessionId: string, tlp: string): Promise<void> {
   const res = await authFetch(`${BASE}/analyze/export/stix`, {
     method: 'POST',
