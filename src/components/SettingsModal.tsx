@@ -50,6 +50,15 @@ When analyzing security data, you:
 Never hallucinate technique IDs — if uncertain, use Low confidence and note the ambiguity.
 Be concise: evidence citations ≤ 120 characters, detection recommendations ≤ 200 characters, IOC context ≤ 80 characters.`;
 
+// Anthropic models offered in the model selector. Phase-1 wall-clock time scales
+// with model speed, so this is the main lever for analysis latency.
+const ANTHROPIC_MODELS: { id: string; label: string }[] = [
+  { id: 'claude-sonnet-4-6',           label: 'Sonnet 4.6 — balanced (default)' },
+  { id: 'claude-haiku-4-5-20251001',   label: 'Haiku 4.5 — fastest' },
+  { id: 'claude-opus-4-8',             label: 'Opus 4.8 — most capable' },
+];
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+
 const PHASE1_PROMPT = `Analyze the following security data and produce a structured technical intelligence assessment.
 Date: [YYYY-MM-DD]
 
@@ -141,6 +150,8 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
   const [newAudiencePrompt, setNewAudiencePrompt] = useState('');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  // Anthropic model selector: true when the saved model is a custom (non-preset) id.
+  const [customAnthropicModel, setCustomAnthropicModel] = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -152,7 +163,12 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
     setNewAudienceName('');
     setNewAudiencePrompt('');
     api.fetchSettings()
-      .then((s) => { setSettings(s); setLoading(false); })
+      .then((s) => {
+        setSettings(s);
+        const m = s['model_name']?.trim() ?? '';
+        setCustomAnthropicModel(m !== '' && !ANTHROPIC_MODELS.some((opt) => opt.id === m));
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [open]);
 
@@ -287,6 +303,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                         set('model_name', '');
                         set('api_base_url', '');
                         set('api_key', '');
+                        setCustomAnthropicModel(false);
                       }
                     }}
                   >
@@ -366,10 +383,48 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                 )}
 
                 {settings['llm_provider'] !== 'openai-compatible' && (
-                  <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground bg-navy-900/50 rounded p-2 border border-border/50">
-                    <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-cyan-500/70" />
-                    <span>Using Anthropic API with key from <code className="text-cyan-400/80">.env</code> file. Model: <code className="text-cyan-400/80">{settings['model_name']?.trim() || 'CLAUDE_MODEL env var or claude-sonnet-4-5'}</code></span>
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Model</label>
+                      <select
+                        className="w-full bg-navy-900 border border-border rounded px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+                        value={customAnthropicModel ? '__custom__' : (settings['model_name']?.trim() || DEFAULT_ANTHROPIC_MODEL)}
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            setCustomAnthropicModel(true);
+                            set('model_name', '');
+                          } else {
+                            setCustomAnthropicModel(false);
+                            set('model_name', e.target.value);
+                          }
+                        }}
+                      >
+                        {ANTHROPIC_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                        <option value="__custom__">Custom…</option>
+                      </select>
+                      <p className="text-[10px] text-muted-foreground mt-1">Faster models reduce analysis time; more capable models add depth. Phase 1 latency scales with model speed.</p>
+                    </div>
+
+                    {customAnthropicModel && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">Custom Model ID</label>
+                        <input
+                          type="text"
+                          className="w-full bg-navy-900 border border-border rounded px-2.5 py-1.5 text-xs text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+                          value={settings['model_name'] ?? ''}
+                          onChange={(e) => set('model_name', e.target.value)}
+                          placeholder="claude-sonnet-4-6"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground bg-navy-900/50 rounded p-2 border border-border/50">
+                      <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-cyan-500/70" />
+                      <span>Anthropic API key is read from the <code className="text-cyan-400/80">.env</code> file. Leaving the model at the default uses <code className="text-cyan-400/80">claude-sonnet-4-6</code> (or the <code className="text-cyan-400/80">CLAUDE_MODEL</code> env var if set).</span>
+                    </div>
+                  </>
                 )}
               </div>
             </Accordion>
