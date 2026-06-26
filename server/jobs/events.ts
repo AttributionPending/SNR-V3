@@ -13,6 +13,13 @@ import logger from '../lib/logger.js';
 
 const TERMINAL = new Set(['complete', 'error']);
 
+// Send an SSE heartbeat comment if no real event has been forwarded for this long.
+// Phase 1 LLM calls can run for minutes with no incremental events; without a
+// keepalive the idle connection gets dropped by the browser/proxy and the client
+// fetch fails with "Failed to fetch". SSE comment lines (": …") are ignored by the
+// frontend parser and by EventSource, so this is transparent to consumers.
+const HEARTBEAT_MS = 15_000;
+
 /** Append a single event row for a job. */
 async function writeJobEvent(jobId: string, event: string, data: unknown): Promise<void> {
   const db = getDb();
@@ -102,6 +109,7 @@ export async function streamJobToResponse(
   });
 
   let lastId = 0;
+  let lastWrite = Date.now();
   const deadline = Date.now() + timeoutMs;
 
   while (!clientGone && Date.now() < deadline) {
@@ -113,6 +121,7 @@ export async function streamJobToResponse(
       lastId = row.id;
       // `data` is already a JSON string — forward verbatim in the SSE frame.
       res.write(`event: ${row.event}\ndata: ${row.data}\n\n`);
+      lastWrite = Date.now();
       if (TERMINAL.has(row.event)) {
         res.end();
         return;
@@ -120,6 +129,12 @@ export async function streamJobToResponse(
     }
 
     if (rows.length === 0) {
+      // Keepalive: a long, event-less stretch (e.g. a slow Phase 1 LLM call)
+      // would otherwise idle the connection until a proxy/browser drops it.
+      if (Date.now() - lastWrite >= HEARTBEAT_MS) {
+        res.write(': ping\n\n');
+        lastWrite = Date.now();
+      }
       await new Promise((r) => setTimeout(r, pollMs));
     }
   }

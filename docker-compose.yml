@@ -69,6 +69,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-snr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-snr}
       BACKUP_DIR: /data/backups
       WORKER_METRICS_PORT: "9091"
+      # Large reports can push a single LLM phase past the 120s default; allow more
+      # headroom so Phase 1 doesn't time out and retry. Override in .env if needed.
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-300}
       # ANALYSIS_WORKER_CONCURRENCY: "2"   # parallel analyses per worker
     volumes:
       - snr-data:/data
