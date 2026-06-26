@@ -54,6 +54,7 @@ Be concise: evidence citations ≤ 120 characters, detection recommendations ≤
 // with model speed, so this is the main lever for analysis latency.
 const ANTHROPIC_MODELS: { id: string; label: string }[] = [
   { id: 'claude-sonnet-4-6',           label: 'Sonnet 4.6 — balanced (default)' },
+  { id: 'claude-sonnet-4-5',           label: 'Sonnet 4.5 — previous balanced' },
   { id: 'claude-haiku-4-5-20251001',   label: 'Haiku 4.5 — fastest' },
   { id: 'claude-opus-4-8',             label: 'Opus 4.8 — most capable' },
 ];
