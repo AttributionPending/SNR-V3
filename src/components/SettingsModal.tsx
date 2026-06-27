@@ -492,6 +492,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
 
             {/* ── Email design → moved to Email Studio ── */}
             <SectionCard icon={<Sparkles className="w-3.5 h-3.5" />} label="Email Branding & Templates">
+              <p className="text-sm font-semibold text-foreground mb-2">Email design for reports lives in Email Studio</p>
               <p className="text-xs text-muted-foreground mb-3">
                 Email design now lives in <strong className="text-foreground/80">Email Studio</strong> — a live,
                 full-screen editor with the rendered brief beside the controls. It consolidates everything that
