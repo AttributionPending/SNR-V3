@@ -665,6 +665,7 @@ function AppMain() {
           open={reportsOpen}
           onClose={() => setReportsOpen(false)}
           onSelectSession={handleSelectSession}
+          onDeleteSession={handleDeleteSession}
         />
         <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
         <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />

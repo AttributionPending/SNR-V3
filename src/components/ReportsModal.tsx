@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, BarChart2, ChevronLeft, ChevronRight, ExternalLink, Activity, Search, TrendingUp } from 'lucide-react';
+import { X, BarChart2, ChevronLeft, ChevronRight, ExternalLink, Activity, Search, TrendingUp, Trash2 } from 'lucide-react';
 import AnalyticsTab from './AnalyticsTab';
+import ConfirmDialog from './ConfirmDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
@@ -13,6 +14,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSelectSession: (id: string) => void;
+  /** Delete a session (soft delete with undo) — reuses the app-level handler/toast. */
+  onDeleteSession: (id: string) => Promise<void> | void;
 }
 
 const PAGE_SIZE = 15;
@@ -35,7 +38,7 @@ const ACTION_COLORS: Record<string, string> = {
   export_zip: 'text-yellow-400',
 };
 
-export default function ReportsModal({ open, onClose, onSelectSession }: Props) {
+export default function ReportsModal({ open, onClose, onSelectSession, onDeleteSession }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [total, setTotal] = useState(0);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
@@ -43,6 +46,8 @@ export default function ReportsModal({ open, onClose, onSelectSession }: Props) 
   const [auditLoading, setAuditLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadSessions = useCallback(async (p: number) => {
     setLoading(true);
@@ -68,6 +73,22 @@ export default function ReportsModal({ open, onClose, onSelectSession }: Props) 
       setAuditLoading(false);
     }
   }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await onDeleteSession(confirmDelete.id);
+      // If we removed the last row on a non-first page, step back one page.
+      const nextPage = sessions.length === 1 && page > 0 ? page - 1 : page;
+      if (nextPage !== page) setPage(nextPage);
+      else await loadSessions(page);
+      await loadAudit();
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(null);
+    }
+  }, [confirmDelete, onDeleteSession, sessions.length, page, loadSessions, loadAudit]);
 
   useEffect(() => {
     if (!open) return;
@@ -110,6 +131,7 @@ export default function ReportsModal({ open, onClose, onSelectSession }: Props) 
   if (!open) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-navy-800 border border-border rounded-xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl"
@@ -227,7 +249,17 @@ export default function ReportsModal({ open, onClose, onSelectSession }: Props) 
                             )}>{s.status}</span>
                           </td>
                           <td className="py-2.5 text-right">
-                            <ExternalLink className="w-3 h-3 text-muted-foreground/40 hover:text-cyan-400 transition-colors inline-block" />
+                            <div className="flex items-center justify-end gap-2">
+                              <ExternalLink className="w-3 h-3 text-muted-foreground/40 hover:text-cyan-400 transition-colors inline-block" />
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: s.id, name: s.name }); }}
+                                className="text-muted-foreground/40 hover:text-red-400 transition-colors"
+                                title="Delete session"
+                                aria-label={`Delete session ${s.name}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -310,6 +342,17 @@ export default function ReportsModal({ open, onClose, onSelectSession }: Props) 
         </div>
       </div>
     </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete session?"
+        message={`Delete "${confirmDelete?.name ?? ''}"? It can be restored from the Undo toast for 7 days.`}
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+        danger
+        onConfirm={handleConfirmDelete}
+        onCancel={() => { if (!deleting) setConfirmDelete(null); }}
+      />
+    </>
   );
 }
 
