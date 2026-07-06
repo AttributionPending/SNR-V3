@@ -170,6 +170,28 @@ export async function assistBriefDraft(
   return (await res.json() as { email_content: AnalysisResult['email_content'] }).email_content;
 }
 
+/** AI-extract techniques/IOCs/rules/flow from freeform notes (Workbench assist). */
+export async function assistExtract(sessionId: string, notes: string): Promise<Omit<AnalysisResult, 'email_content'>> {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/assist/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'AI extract failed');
+  return (await res.json() as { technical: Omit<AnalysisResult, 'email_content'> }).technical;
+}
+
+/** AI-generate detection rules for the current techniques (Workbench assist). */
+export async function assistRules(sessionId: string, result: AnalysisResult): Promise<AnalysisResult['detection_rules']> {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/assist/rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ result }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'AI rules failed');
+  return (await res.json() as { detection_rules: AnalysisResult['detection_rules'] }).detection_rules;
+}
+
 /** Save an analyst-authored AnalysisResult (Workbench). Returns the new version. */
 export async function saveSessionResult(
   sessionId: string,

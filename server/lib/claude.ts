@@ -372,34 +372,7 @@ export async function analyzeWithClaude(
   // ── CALL 1: Technical analysis ─────────────────────────────────────────────
 
   // Built-in analysis instructions (Phase 1 rules block) — can be overridden
-  const builtInPhase1Rules = `Analysis rules:
-- Map techniques ONLY to behaviors explicitly evidenced in the input — do not invent
-- Extract IOC values as exact strings from the input
-- Sort attack_chain by ATT&CK tactic order (Reconnaissance first, Impact last)
-- Set all threat_actor fields to null when attribution is not possible
-- Truncate evidence strings to ≤ 120 characters with … if needed
-${hasOrgContext ? '- Prioritize findings relevant to the organizational context in [ORGANIZATIONAL CONTEXT]' : ''}
-Detection coverage rules — apply STRICTLY, do not guess:
-- "Likely Detected": ONLY when SIEM alert or log data directly shows an existing rule caught this technique (the alert firing IS the evidence).
-- "Detection Gap": ONLY when a [DETECTION STACK] is provided AND you can identify a specific tool or log source in that stack that should cover this technique but clearly does not.
-- "Unknown": DEFAULT for all other cases — when detection context is absent or a grounded assessment is not possible.${!hasDetectionContext ? '\n- NOTE: No [DETECTION STACK] provided. Do not use "Detection Gap". Default to "Unknown" unless SIEM data directly evidences detection.' : ''}
-Detection rule generation:
-- Extract any Sigma, YARA, or Suricata/Snort rules found verbatim in the input (mark as "extracted")
-- For each observed technique with High or Medium confidence, generate at least one detection rule in the most appropriate format (mark as "generated")
-- Sigma rules: use valid YAML with proper logsource, detection, and condition fields
-- YARA rules: use valid YARA syntax with proper rule name, meta, strings, and condition
-- Suricata rules: use valid Suricata rule syntax with proper action, header, and rule options
-- Link each rule to its related ATT&CK technique ID when applicable
-Attack Flow (causal graph — populate attack_flow ONLY when the input describes how steps connect):
-- Build the flow STRICTLY from explicitly stated information — no speculative or inferred edges
-- Node types: "action" (an ATT&CK technique — every action node's technique_id MUST match a technique_id or sub_technique_id already in attack_chain), "asset" (a named target system/host), "tool" (named legitimate software), "malware" (named malicious software), "operator_and"/"operator_or" (logic gates)
-- Only create asset/tool/malware nodes when explicitly named in the input
-- Use operator nodes ONLY for genuine convergence (AND = all inputs required) or alternatives (OR = any input suffices)
-- Edges express causal/relational links and MUST form a directed acyclic graph (no cycles). The flow begins at the initial-access action(s)
-- Edge labels: "leads to" (action→action progression), "uses" (action→tool/malware), "targets" (action→asset), "drops" (action→malware), "requires" (→operator), "communicates with"
-- Keep it focused: at most 30 nodes total. If the input does not support a meaningful causal graph (e.g. a single technique, or no step ordering), OMIT attack_flow entirely rather than fabricating one`;
-
-  const phase1Instructions = input.phase1InstructionsOverride?.trim() || builtInPhase1Rules;
+  const phase1Instructions = input.phase1InstructionsOverride?.trim() || buildPhase1Rules(hasOrgContext, hasDetectionContext);
 
   const technicalPrompt = `Analyze the following security data and produce a structured technical intelligence assessment.
 Date: ${today}
@@ -582,4 +555,131 @@ technical findings above — do not invent techniques, IOCs, or attribution.`;
     emailSchema,
     onStream,
   );
+}
+
+/** The built-in Phase-1 analysis rules block. Shared by analyzeWithClaude and
+ *  extractTechnical so the two stay identical. */
+export function buildPhase1Rules(hasOrgContext: boolean, hasDetectionContext: boolean): string {
+  return `Analysis rules:
+- Map techniques ONLY to behaviors explicitly evidenced in the input — do not invent
+- Extract IOC values as exact strings from the input
+- Sort attack_chain by ATT&CK tactic order (Reconnaissance first, Impact last)
+- Set all threat_actor fields to null when attribution is not possible
+- Truncate evidence strings to ≤ 120 characters with … if needed
+${hasOrgContext ? '- Prioritize findings relevant to the organizational context in [ORGANIZATIONAL CONTEXT]' : ''}
+Detection coverage rules — apply STRICTLY, do not guess:
+- "Likely Detected": ONLY when SIEM alert or log data directly shows an existing rule caught this technique (the alert firing IS the evidence).
+- "Detection Gap": ONLY when a [DETECTION STACK] is provided AND you can identify a specific tool or log source in that stack that should cover this technique but clearly does not.
+- "Unknown": DEFAULT for all other cases — when detection context is absent or a grounded assessment is not possible.${!hasDetectionContext ? '\n- NOTE: No [DETECTION STACK] provided. Do not use "Detection Gap". Default to "Unknown" unless SIEM data directly evidences detection.' : ''}
+Detection rule generation:
+- Extract any Sigma, YARA, or Suricata/Snort rules found verbatim in the input (mark as "extracted")
+- For each observed technique with High or Medium confidence, generate at least one detection rule in the most appropriate format (mark as "generated")
+- Sigma rules: use valid YAML with proper logsource, detection, and condition fields
+- YARA rules: use valid YARA syntax with proper rule name, meta, strings, and condition
+- Suricata rules: use valid Suricata rule syntax with proper action, header, and rule options
+- Link each rule to its related ATT&CK technique ID when applicable
+Attack Flow (causal graph — populate attack_flow ONLY when the input describes how steps connect):
+- Build the flow STRICTLY from explicitly stated information — no speculative or inferred edges
+- Node types: "action" (an ATT&CK technique — every action node's technique_id MUST match a technique_id or sub_technique_id already in attack_chain), "asset" (a named target system/host), "tool" (named legitimate software), "malware" (named malicious software), "operator_and"/"operator_or" (logic gates)
+- Only create asset/tool/malware nodes when explicitly named in the input
+- Use operator nodes ONLY for genuine convergence (AND = all inputs required) or alternatives (OR = any input suffices)
+- Edges express causal/relational links and MUST form a directed acyclic graph (no cycles). The flow begins at the initial-access action(s)
+- Edge labels: "leads to" (action→action progression), "uses" (action→tool/malware), "targets" (action→asset), "drops" (action→malware), "requires" (→operator), "communicates with"
+- Keep it focused: at most 30 nodes total. If the input does not support a meaningful causal graph (e.g. a single technique, or no step ordering), OMIT attack_flow entirely rather than fabricating one`;
+}
+
+/**
+ * Phase-1 ONLY: extract structured technical intelligence (techniques, IOCs,
+ * detection rules, threat actor, affected assets, attack flow) from input.
+ * Used by the Analyst Workbench's "Suggest from notes" so an analyst can seed
+ * their authored report from freeform research notes. Additive — the analysis
+ * pipeline is unchanged.
+ */
+export async function extractTechnical(
+  input: AnalysisInput,
+  onStream?: (chunk: string) => void,
+): Promise<TechnicalResult> {
+  const provider = await getProvider(input.providerSettings ?? {});
+  const systemPrompt = input.systemPromptOverride?.trim() || SYSTEM_PROMPT;
+  const today = new Date().toISOString().split('T')[0];
+  const contextBlock = buildContextBlock(input);
+  const hasDetectionContext = !!input.orgDetectionContext?.trim();
+  const hasOrgContext = !!input.orgEvaluationCriteria?.trim();
+  const phase1Instructions = input.phase1InstructionsOverride?.trim() || buildPhase1Rules(hasOrgContext, hasDetectionContext);
+
+  const technicalPrompt = `Analyze the following security data and produce a structured technical intelligence assessment.
+Date: ${today}
+
+SECURITY DATA:
+${contextBlock}
+
+${phase1Instructions}`;
+
+  return provider.analyze<TechnicalResult>(
+    systemPrompt,
+    technicalPrompt,
+    'technical_analysis',
+    'Output the structured technical intelligence assessment for this security incident',
+    TECHNICAL_TOOL_SCHEMA,
+    onStream,
+  );
+}
+
+const DETECTION_RULES_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    detection_rules: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          rule_type: { type: 'string', enum: ['sigma', 'yara', 'suricata'] },
+          rule_name: { type: 'string' },
+          rule_content: { type: 'string' },
+          description: { type: 'string' },
+          source: { type: 'string', enum: ['generated'] },
+          confidence: { type: 'string', enum: ['High', 'Medium', 'Low'] },
+          related_technique: { type: ['string', 'null'] },
+        },
+        required: ['rule_type', 'rule_name', 'rule_content', 'description', 'source', 'confidence'],
+      },
+    },
+  },
+  required: ['detection_rules'],
+} as unknown as JsonSchema;
+
+/**
+ * Generate detection rules (Sigma / YARA / Suricata) for a set of already-known
+ * techniques — the Workbench "Generate detection rules" assist. No source input
+ * needed; rules are derived from the technique list the analyst authored.
+ */
+export async function generateDetectionRules(
+  technical: TechnicalResult,
+  settings: Record<string, string>,
+): Promise<AnalysisResult['detection_rules']> {
+  if (!technical.attack_chain?.length) return [];
+  const provider = await getProvider(settings);
+  const systemPrompt = settings.system_prompt_override?.trim() || SYSTEM_PROMPT;
+  const techLines = technical.attack_chain
+    .map((t) => `- ${t.sub_technique_id ?? t.technique_id} ${t.sub_technique_name ?? t.technique_name} (${t.tactic})${t.evidence ? `: ${t.evidence}` : ''}`)
+    .join('\n');
+  const prompt = `Generate detection rules for the following ATT&CK techniques. For each technique,
+produce at least one rule in the most appropriate format (Sigma / YARA / Suricata).
+- Sigma: valid YAML with logsource, detection, and condition.
+- YARA: valid syntax with rule name, meta, strings, condition.
+- Suricata: valid rule syntax with action, header, options.
+- Set source to "generated" and related_technique to the technique's ID.
+- Do not invent indicators; write generic behavioral detections grounded in the technique.
+
+Techniques:
+${techLines}`;
+
+  const out = await provider.analyze<{ detection_rules: AnalysisResult['detection_rules'] }>(
+    systemPrompt,
+    prompt,
+    'detection_rules',
+    'Output detection rules for the provided techniques',
+    DETECTION_RULES_SCHEMA,
+  );
+  return (out.detection_rules ?? []).map((r) => ({ ...r, source: 'generated' as const }));
 }

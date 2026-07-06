@@ -7,7 +7,7 @@ import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
 import { extractReferences } from '../lib/references.js';
-import { generateBrief, type AnalysisResult } from '../lib/claude.js';
+import { generateBrief, extractTechnical, generateDetectionRules, type AnalysisResult } from '../lib/claude.js';
 import { parseSections } from '../lib/sections.js';
 import logger from '../lib/logger.js';
 
@@ -493,6 +493,71 @@ router.post('/:id/assist/brief', async (req: Request, res: Response) => {
   } catch (err) {
     logger.warn({ err, session_id: req.params.id }, 'AI brief draft failed');
     res.status(502).json({ error: err instanceof Error ? err.message : 'AI draft failed' });
+  }
+});
+
+// POST /api/sessions/:id/assist/extract — Phase-1 extraction over the analyst's
+// freeform notes. Returns suggested techniques / IOCs / rules / actor / flow to
+// MERGE into the Workbench draft. Never persists.
+router.post('/:id/assist/extract', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user.role === 'viewer') { res.status(403).json({ error: 'Viewers cannot use AI assist' }); return; }
+  const session = await fetchSessionWithTeamCheck(req, res);
+  if (!session) return;
+
+  const { notes } = req.body as { notes?: string };
+  if (!notes || !notes.trim()) { res.status(400).json({ error: 'notes are required' }); return; }
+  try {
+    const settings = await loadMergedSettings(authReq.teamId);
+    const technical = await extractTechnical({
+      text: notes,
+      audience: (session.audience as string) || 'soc',
+      orgEvaluationCriteria: settings.org_evaluation_criteria || undefined,
+      orgDetectionContext: settings.org_detection_context || undefined,
+      systemPromptOverride: settings.system_prompt_override || undefined,
+      phase1InstructionsOverride: settings.phase1_instructions_override || undefined,
+      providerSettings: settings,
+    });
+    appendAuditLog({
+      analyst_name: authReq.user.displayName,
+      user_id: authReq.user.id,
+      session_id: req.params.id,
+      action: 'assist_extract',
+      details: `techniques=${technical.attack_chain?.length ?? 0}, iocs=${technical.iocs?.length ?? 0}`,
+    });
+    res.json({ technical });
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'AI extract failed');
+    res.status(502).json({ error: err instanceof Error ? err.message : 'AI extract failed' });
+  }
+});
+
+// POST /api/sessions/:id/assist/rules — generate detection rules for the analyst's
+// current techniques. Returns rules to MERGE into the draft. Never persists.
+router.post('/:id/assist/rules', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user.role === 'viewer') { res.status(403).json({ error: 'Viewers cannot use AI assist' }); return; }
+  const session = await fetchSessionWithTeamCheck(req, res);
+  if (!session) return;
+
+  const { result } = req.body as { result?: AnalysisResult };
+  if (!result?.attack_chain?.length) { res.status(400).json({ error: 'Add at least one ATT&CK technique first' }); return; }
+  try {
+    const settings = await loadMergedSettings(authReq.teamId);
+    const { email_content: _drop, ...technical } = result;
+    void _drop;
+    const detection_rules = await generateDetectionRules(technical, settings);
+    appendAuditLog({
+      analyst_name: authReq.user.displayName,
+      user_id: authReq.user.id,
+      session_id: req.params.id,
+      action: 'assist_rules',
+      details: `rules=${detection_rules.length}`,
+    });
+    res.json({ detection_rules });
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'AI rules generation failed');
+    res.status(502).json({ error: err instanceof Error ? err.message : 'AI rules generation failed' });
   }
 });
 

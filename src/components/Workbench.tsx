@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, PenLine, Save, Loader2, FileText, Crosshair, Bug, ShieldCheck, Users, AlignLeft, Plus, Trash2, Sparkles } from 'lucide-react';
+import { X, PenLine, Save, Loader2, FileText, Crosshair, Bug, ShieldCheck, Users, AlignLeft, Plus, Trash2, Sparkles, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import { parseSections } from '@/lib/sections';
 import RichTextEditor from './RichTextEditor';
+import AttackFlowView from './AttackFlowView';
 import { Button } from './ui/button';
 import ATTACK_TECHNIQUES from '@/data/attack-techniques.json';
-import type { AnalysisResult, AttackTechnique, IOC, DetectionRule, AffectedAsset, BriefSection } from '@/types';
+import type { AnalysisResult, AttackTechnique, IOC, DetectionRule, AffectedAsset, BriefSection, AttackFlow, AttackFlowNode } from '@/types';
 
 // id → { name, tactic } lookup for the ATT&CK technique picker autocomplete.
 const ATTACK_BY_ID = new Map<string, { name: string; tactic: string }>(
@@ -24,6 +25,8 @@ const RULE_TYPES: DetectionRule['rule_type'][] = ['sigma', 'yara', 'suricata'];
 const CONFIDENCE = ['High', 'Medium', 'Low'] as const;
 const COVERAGE: AttackTechnique['detection_coverage'][] = ['Likely Detected', 'Detection Gap', 'Unknown'];
 const SEVERITY = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const;
+const FLOW_NODE_TYPES: AttackFlowNode['type'][] = ['action', 'asset', 'tool', 'malware', 'operator_and', 'operator_or'];
+const FLOW_EDGE_LABELS = ['leads to', 'uses', 'targets', 'drops', 'requires', 'communicates with'];
 
 /** A blank result to seed a new authored report. */
 export function blankResult(): AnalysisResult {
@@ -38,7 +41,7 @@ export function blankResult(): AnalysisResult {
   };
 }
 
-type Tab = 'summary' | 'attack' | 'iocs' | 'rules' | 'context' | 'narrative';
+type Tab = 'summary' | 'attack' | 'iocs' | 'rules' | 'context' | 'flow' | 'narrative';
 
 interface Props {
   open: boolean;
@@ -58,6 +61,8 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
   const [sections, setSections] = useState<BriefSection[]>([]);
   const [saving, setSaving] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [generatingRules, setGeneratingRules] = useState(false);
 
   // Reseed when opened with a (possibly different) session/result.
   useEffect(() => { if (open) { setDraft(initial); setTab('summary'); } }, [open, initial]);
@@ -146,6 +151,84 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
     }
   }, [draft, sessionId, audience, onShowToast]);
 
+  // "Suggest from notes" — Phase-1 extraction, merged (deduped) into the draft.
+  const handleExtract = useCallback(async () => {
+    const notes = draft.incident_summary.analyst_notes.trim();
+    if (!notes) { onShowToast?.('Write some research notes in the Summary tab first', 'error'); setTab('summary'); return; }
+    setExtracting(true);
+    try {
+      const t = await api.assistExtract(sessionId, notes);
+      const techKey = (x: AttackTechnique) => `${x.technique_id}|${x.sub_technique_id ?? ''}`.toUpperCase();
+      const iocKey = (x: IOC) => `${x.type}|${x.value}`.toLowerCase();
+      const ruleKey = (x: DetectionRule) => x.rule_name.toLowerCase();
+      const existTech = new Set(draft.attack_chain.map(techKey));
+      const existIoc = new Set(draft.iocs.map(iocKey));
+      const existRule = new Set(draft.detection_rules.map(ruleKey));
+      const newTech = (t.attack_chain ?? []).filter((x) => x.technique_id && !existTech.has(techKey(x)));
+      const newIocs = (t.iocs ?? []).filter((x) => x.value && !existIoc.has(iocKey(x)));
+      const newRules = (t.detection_rules ?? []).filter((x) => x.rule_name && !existRule.has(ruleKey(x)));
+      setDraft((d) => ({
+        ...d,
+        attack_chain: [...d.attack_chain, ...newTech].map((x, i) => ({ ...x, order: i })),
+        iocs: [...d.iocs, ...newIocs],
+        detection_rules: [...d.detection_rules, ...newRules],
+        affected_assets: d.affected_assets.length ? d.affected_assets : (t.affected_assets ?? []),
+        threat_actor: d.threat_actor.name ? d.threat_actor : (t.threat_actor ?? d.threat_actor),
+        attack_flow: (d.attack_flow?.nodes?.length) ? d.attack_flow : t.attack_flow,
+      }));
+      onShowToast?.(`Merged ${newTech.length} technique(s), ${newIocs.length} IOC(s), ${newRules.length} rule(s)${t.attack_flow && !draft.attack_flow?.nodes?.length ? ' + a flow' : ''} — review & edit`, 'success');
+    } catch (e) {
+      onShowToast?.(e instanceof Error ? e.message : 'AI extract failed', 'error');
+    } finally {
+      setExtracting(false);
+    }
+  }, [draft, sessionId, onShowToast]);
+
+  // "Generate detection rules" — for the current techniques; appended (deduped).
+  const handleGenerateRules = useCallback(async () => {
+    if (!draft.attack_chain.length) { onShowToast?.('Add at least one ATT&CK technique first', 'error'); setTab('attack'); return; }
+    setGeneratingRules(true);
+    try {
+      const rules = await api.assistRules(sessionId, draft);
+      const exist = new Set(draft.detection_rules.map((r) => r.rule_name.toLowerCase()));
+      const add = rules.filter((r) => r.rule_name && !exist.has(r.rule_name.toLowerCase()));
+      setDraft((d) => ({ ...d, detection_rules: [...d.detection_rules, ...add] }));
+      onShowToast?.(`Generated ${add.length} detection rule(s) — review & edit`, 'success');
+    } catch (e) {
+      onShowToast?.(e instanceof Error ? e.message : 'AI rules generation failed', 'error');
+    } finally {
+      setGeneratingRules(false);
+    }
+  }, [draft, sessionId, onShowToast]);
+
+  // ── Attack Flow mutators ─────────────────────────────────────────────────────
+  const flow: AttackFlow = draft.attack_flow ?? { nodes: [], edges: [] };
+  const setFlow = (next: AttackFlow) => setDraft((d) => ({ ...d, attack_flow: next }));
+  const addNode = () => {
+    const n = flow.nodes.length + 1;
+    let id = `f${n}`;
+    const ids = new Set(flow.nodes.map((x) => x.id));
+    while (ids.has(id)) id = `f${parseInt(id.slice(1)) + 1}`;
+    setFlow({ ...flow, nodes: [...flow.nodes, { id, type: 'action', name: '', technique_id: null, description: '' }] });
+  };
+  const updateNode = (i: number, patch: Partial<AttackFlowNode>) =>
+    setFlow({ ...flow, nodes: flow.nodes.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const removeNode = (i: number) => {
+    const id = flow.nodes[i].id;
+    setFlow({ nodes: flow.nodes.filter((_, j) => j !== i), edges: flow.edges.filter((e) => e.source !== id && e.target !== id) });
+  };
+  const addEdge = () => {
+    if (flow.nodes.length < 2) { onShowToast?.('Add at least two nodes before connecting them', 'error'); return; }
+    setFlow({ ...flow, edges: [...flow.edges, { source: flow.nodes[0].id, target: flow.nodes[1].id, label: 'leads to' }] });
+  };
+  const updateEdge = (i: number, patch: Partial<AttackFlow['edges'][number]>) =>
+    setFlow({ ...flow, edges: flow.edges.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const removeEdge = (i: number) => setFlow({ ...flow, edges: flow.edges.filter((_, j) => j !== i) });
+
+  const actionNodeCount = flow.nodes.filter((n) => n.type === 'action').length;
+  const nodeLabel = (id: string) => { const n = flow.nodes.find((x) => x.id === id); return n ? `${n.name || '(unnamed)'} [${id}]` : id; };
+  const techOptions = draft.attack_chain.map((t) => t.sub_technique_id ?? t.technique_id).filter(Boolean);
+
   if (!open) return null;
 
   const textSections = sections.filter((s) => s.type === 'text' || s.type === 'bullets' || s.type === 'numbered');
@@ -175,13 +258,14 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-6 border-b border-border flex-shrink-0">
+      <div className="grid grid-cols-7 border-b border-border flex-shrink-0">
         {([
           ['summary', 'Summary', FileText],
           ['attack', 'ATT&CK', Crosshair],
           ['iocs', 'IOCs', Bug],
           ['rules', 'Detections', ShieldCheck],
           ['context', 'Actor & Assets', Users],
+          ['flow', 'Flow', Network],
           ['narrative', 'Narrative', AlignLeft],
         ] as const).map(([id, label, Icon]) => (
           <button key={id} onClick={() => setTab(id)}
@@ -210,8 +294,14 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
               <TextArea value={draft.incident_summary.description} onChange={(v) => setSummary('description', v)} rows={4} placeholder="What happened and why it matters." />
             </Field>
             <Field label="Analyst Notes" hint="Add Reference:/Source: lines or URLs here — they populate the References section.">
-              <TextArea value={draft.incident_summary.analyst_notes} onChange={(v) => setSummary('analyst_notes', v)} rows={3} placeholder={'Internal notes.\nReference: https://your-source…'} />
+              <TextArea value={draft.incident_summary.analyst_notes} onChange={(v) => setSummary('analyst_notes', v)} rows={4} placeholder={'Write up your research here.\nReference: https://your-source…'} />
             </Field>
+            <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2">
+              <span className="text-[11px] text-muted-foreground">Have a freeform write-up? Let the AI extract ATT&amp;CK techniques, IOCs, detection rules &amp; a flow from your notes — then merge them in and edit.</span>
+              <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleExtract} disabled={extracting}>
+                {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Suggest from notes
+              </Button>
+            </div>
           </>
         )}
 
@@ -256,6 +346,13 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
         )}
 
         {tab === 'rules' && (
+          <>
+          <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2 mb-3">
+            <span className="text-[11px] text-muted-foreground">Generate Sigma/YARA/Suricata rules for the ATT&amp;CK techniques you added — appended below for review.</span>
+            <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleGenerateRules} disabled={generatingRules}>
+              {generatingRules ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Generate detection rules
+            </Button>
+          </div>
           <Section title="Detection Rules" onAdd={addRule} addLabel="Add rule" empty={draft.detection_rules.length === 0}>
             {draft.detection_rules.map((r, i) => (
               <Card key={i} onRemove={() => mutList('detection_rules', (a) => removeAt(a, i))}>
@@ -274,6 +371,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
               </Card>
             ))}
           </Section>
+          </>
         )}
 
         {tab === 'context' && (
@@ -300,6 +398,73 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
                   </Card>
                 ))}
               </Section>
+            </div>
+          </>
+        )}
+
+        {tab === 'flow' && (
+          <>
+            <div className={cn('text-[11px] rounded p-2 border', actionNodeCount >= 2 && flow.edges.length >= 1 ? 'text-muted-foreground border-border/50 bg-navy-900/40' : 'text-yellow-300/80 border-yellow-500/30 bg-yellow-500/5')}>
+              Build the causal graph: add nodes and connect them. A flow is kept on save only if it has
+              <strong className="text-foreground/80"> ≥2 action nodes</strong>, <strong className="text-foreground/80">≥1 edge</strong>, forms a DAG (no cycles), and each action node references a
+              technique from the <strong className="text-foreground/80">ATT&amp;CK tab</strong> — otherwise it's dropped.
+              Currently: {actionNodeCount} action node(s), {flow.edges.length} edge(s).
+            </div>
+
+            <Section title="Nodes" onAdd={addNode} addLabel="Add node" empty={flow.nodes.length === 0}>
+              {flow.nodes.map((n, i) => (
+                <Card key={n.id} onRemove={() => removeNode(i)}>
+                  <div className="grid grid-cols-4 gap-2">
+                    <LabeledSelect label="Type" value={n.type} onChange={(v) => updateNode(i, { type: v as AttackFlowNode['type'] })} options={FLOW_NODE_TYPES} />
+                    <div className="col-span-2"><LabeledInput label="Name" value={n.name} onChange={(v) => updateNode(i, { name: v })} placeholder={n.type === 'action' ? 'e.g. PowerShell execution' : n.type === 'malware' ? 'e.g. TinyRCT' : 'name'} /></div>
+                    <div>
+                      <label className="text-[9px] uppercase tracking-wide text-muted-foreground">Technique (action)</label>
+                      <select
+                        value={n.technique_id ?? ''}
+                        disabled={n.type !== 'action'}
+                        onChange={(e) => updateNode(i, { technique_id: e.target.value || null })}
+                        className={cn(inputCls, 'mt-0.5 disabled:opacity-40')}
+                      >
+                        <option value="">—</option>
+                        {techOptions.map((tid) => <option key={tid} value={tid}>{tid}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-4"><LabeledInput label="Description" value={n.description} onChange={(v) => updateNode(i, { description: v })} placeholder="Optional." /></div>
+                    <div className="col-span-4 text-[9px] text-muted-foreground/60 font-mono">id: {n.id}</div>
+                  </div>
+                </Card>
+              ))}
+            </Section>
+
+            <Section title="Edges" onAdd={addEdge} addLabel="Add edge" empty={flow.edges.length === 0}>
+              {flow.edges.map((e, i) => (
+                <Card key={i} onRemove={() => removeEdge(i)}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[9px] uppercase tracking-wide text-muted-foreground">From</label>
+                      <select value={e.source} onChange={(ev) => updateEdge(i, { source: ev.target.value })} className={cn(inputCls, 'mt-0.5')}>
+                        {flow.nodes.map((nd) => <option key={nd.id} value={nd.id}>{nodeLabel(nd.id)}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] uppercase tracking-wide text-muted-foreground">To</label>
+                      <select value={e.target} onChange={(ev) => updateEdge(i, { target: ev.target.value })} className={cn(inputCls, 'mt-0.5')}>
+                        {flow.nodes.map((nd) => <option key={nd.id} value={nd.id}>{nodeLabel(nd.id)}</option>)}
+                      </select>
+                    </div>
+                    <LabeledSelect label="Label" value={e.label} onChange={(v) => updateEdge(i, { label: v })} options={FLOW_EDGE_LABELS} />
+                  </div>
+                </Card>
+              ))}
+            </Section>
+
+            <SectionLabel>Live Preview</SectionLabel>
+            <div className="h-96 border border-border rounded bg-navy-900/40 overflow-hidden">
+              {flow.nodes.length > 0 ? (
+                <AttackFlowView flow={flow} attackChain={draft.attack_chain} onExpand={() => {}} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground/60">Add nodes and edges to see the diagram.</div>
+              )}
             </div>
           </>
         )}
