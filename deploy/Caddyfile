@@ -4,8 +4,43 @@
 # - For "localhost" (default) Caddy issues a local self-signed cert (browser
 #   warning is expected). For an internal CA/cert, replace the site block with
 #   your domain and `tls /path/cert.pem /path/key.pem`.
+
+# Caddy's local (internal) CA mints a fresh intermediate cert with only a 7-day
+# lifetime by default, which caps any leaf cert's lifetime to at most 7 days no
+# matter what a site's `tls` directive requests. Extending it here is safe
+# regardless of SNR_DOMAIN — this "local" CA is only ever used for the internal/
+# self-signed issuer (never Let's Encrypt/ACME), so a public-domain deployment
+# that never invokes it is unaffected.
+{
+	pki {
+		ca local {
+			intermediate_lifetime 8760h
+		}
+	}
+}
+
+# Caddy's internal issuer defaults to a 12h leaf cert lifetime; on a
+# localhost/dev deployment that can sit idle for days (e.g. a Docker Desktop
+# restart), it expires before the next request triggers renewal, silently
+# blocking login/API calls with a browser cert error (no server-side trace).
+# Opt-in only (via CADDY_TLS_SNIPPET=tls_local_long in .env) — must NOT apply
+# unconditionally, since `tls internal` forces the self-signed issuer even for
+# a real public SNR_DOMAIN, which would break Let's Encrypt provisioning.
+# Default snippet is a no-op, preserving Caddy's normal automatic-HTTPS choice.
+(tls_none) {
+}
+(tls_local_long) {
+	tls {
+		issuer internal {
+			lifetime 8760h
+		}
+	}
+}
+
 {$SNR_DOMAIN} {
 	encode gzip
+
+	import {$CADDY_TLS_SNIPPET:tls_none}
 
 	# Never expose Prometheus metrics at the public edge — scrape app:3001 and
 	# worker:9091 over the internal Docker network instead.

@@ -94,6 +94,9 @@ services:
       - "443:443"
     environment:
       SNR_DOMAIN: ${SNR_DOMAIN:-localhost}
+      # Opt-in only (see deploy/Caddyfile) — leave unset for a public SNR_DOMAIN
+      # so Let's Encrypt provisioning is unaffected.
+      CADDY_TLS_SNIPPET: ${CADDY_TLS_SNIPPET:-tls_none}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -79,6 +79,7 @@ results, threat actors, audit log, and settings forward.
 | `WORKER_METRICS_PORT` | `9091` | Worker Prometheus port. |
 | `METRICS_TOKEN` | — | If set, `/metrics` requires `Authorization: Bearer <token>`. |
 | `SNR_DOMAIN` | `localhost` | Domain for the Caddy TLS proxy. |
+| `CADDY_TLS_SNIPPET` | `tls_none` | `tls_local_long` extends the `localhost` self-signed cert to ~1yr. **Leave unset for a public `SNR_DOMAIN`** — see TLS section. |
 
 Any secret supports a `*_FILE` variant pointing at a mounted file (Docker/K8s
 secrets); the file's contents take precedence.
@@ -87,6 +88,13 @@ secrets); the file's contents take precedence.
 - **Public domain:** set `SNR_DOMAIN`; Caddy auto-provisions Let's Encrypt (ports 80/443 reachable).
 - **Internal CA / provided cert:** edit `deploy/Caddyfile` → `tls /path/cert.pem /path/key.pem` and mount it.
 - **Your own proxy:** terminate TLS there, proxy to `app:3001`, align `TRUST_PROXY`.
+- **`localhost` self-signed cert expiring on an idle deployment:** Caddy's internal
+  issuer defaults to a 12h leaf lifetime and only renews on the next request, so a
+  deployment left idle for a few days will present an expired cert until the next
+  hit — the browser blocks silently (no server-side trace, e.g. login just fails).
+  Set `CADDY_TLS_SNIPPET=tls_local_long` (only when `SNR_DOMAIN=localhost`) to
+  extend it to ~1 year. **Do not set this for a public `SNR_DOMAIN`** — it forces
+  the self-signed issuer instead of Let's Encrypt.
 
 ## Observability
 - **Metrics:** Prometheus at `GET /metrics` on the **app** (HTTP, queue depth) and on
