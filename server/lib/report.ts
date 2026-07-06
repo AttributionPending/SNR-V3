@@ -23,6 +23,8 @@ export function buildMarkdownReport(
     audience: string;
     /** Saved Report Template (token-based). Empty = built-in structured layout. */
     template?: string;
+    /** 'workbench' adds an "Original research — analyst-authored" provenance line. */
+    origin?: 'analysis' | 'workbench';
   },
 ): string {
   const email = result.email_content;
@@ -182,6 +184,7 @@ export function buildMarkdownReport(
     `**Report ID:** ${reportId}`,
     `**Author/Team:** ${analystLine}`,
     `**Confidence Level:** ${confidence}`,
+    ...(opts.origin === 'workbench' ? ['**Source:** Original research — analyst-authored'] : []),
     '',
     '---',
     '',

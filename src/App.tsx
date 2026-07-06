@@ -692,6 +692,7 @@ function AppMain() {
             sessionId={activeSessionId}
             initial={workbench.initial}
             expectedVersion={workbench.version}
+            audience={audience}
             onSaved={handleWorkbenchSaved}
             onShowToast={showToast}
           />

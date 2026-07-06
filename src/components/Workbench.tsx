@@ -5,7 +5,13 @@ import * as api from '@/lib/api';
 import { parseSections } from '@/lib/sections';
 import RichTextEditor from './RichTextEditor';
 import { Button } from './ui/button';
+import ATTACK_TECHNIQUES from '@/data/attack-techniques.json';
 import type { AnalysisResult, AttackTechnique, IOC, DetectionRule, AffectedAsset, BriefSection } from '@/types';
+
+// id → { name, tactic } lookup for the ATT&CK technique picker autocomplete.
+const ATTACK_BY_ID = new Map<string, { name: string; tactic: string }>(
+  (ATTACK_TECHNIQUES as Array<{ id: string; name: string; tactic: string }>).map((t) => [t.id, { name: t.name, tactic: t.tactic }]),
+);
 
 // MITRE enterprise tactics, in kill-chain order.
 const TACTICS = [
@@ -40,16 +46,18 @@ interface Props {
   sessionId: string;
   initial: AnalysisResult;
   expectedVersion?: number;
+  audience?: string;
   onSaved: (version: number) => void;
   onShowToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
   onOpenEmailStudio?: () => void;
 }
 
-export default function Workbench({ open, onClose, sessionId, initial, expectedVersion, onSaved, onShowToast, onOpenEmailStudio }: Props) {
+export default function Workbench({ open, onClose, sessionId, initial, expectedVersion, audience, onSaved, onShowToast, onOpenEmailStudio }: Props) {
   const [tab, setTab] = useState<Tab>('summary');
   const [draft, setDraft] = useState<AnalysisResult>(initial);
   const [sections, setSections] = useState<BriefSection[]>([]);
   const [saving, setSaving] = useState(false);
+  const [drafting, setDrafting] = useState(false);
 
   // Reseed when opened with a (possibly different) session/result.
   useEffect(() => { if (open) { setDraft(initial); setTab('summary'); } }, [open, initial]);
@@ -77,6 +85,20 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
   }
   const updateAt = <T,>(arr: T[], i: number, patch: Partial<T>): T[] => arr.map((x, j) => (j === i ? { ...x, ...patch } : x));
   const removeAt = <T,>(arr: T[], i: number): T[] => arr.filter((_, j) => j !== i);
+
+  // Picker autofill: when a known ATT&CK id is entered, fill name + tactic.
+  const applyTechniqueId = (i: number, v: string) => {
+    const meta = ATTACK_BY_ID.get(v.trim().toUpperCase());
+    mutList('attack_chain', (a) => updateAt(a, i, meta
+      ? { technique_id: v, technique_name: meta.name, tactic: meta.tactic || a[i].tactic }
+      : { technique_id: v }));
+  };
+  const applySubTechniqueId = (i: number, v: string) => {
+    const meta = ATTACK_BY_ID.get(v.trim().toUpperCase());
+    mutList('attack_chain', (a) => updateAt(a, i, meta
+      ? { sub_technique_id: v || null, sub_technique_name: meta.name }
+      : { sub_technique_id: v || null }));
+  };
 
   const addTechnique = () => mutList('attack_chain', (a) => [...a, {
     technique_id: '', technique_name: '', tactic: TACTICS[2], tactic_id: '', sub_technique_id: null,
@@ -107,6 +129,22 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
       setSaving(false);
     }
   }, [draft, sessionId, expectedVersion, onSaved, onShowToast]);
+
+  const handleAiDraft = useCallback(async () => {
+    if (!draft.incident_summary.title.trim() && draft.attack_chain.length === 0) {
+      onShowToast?.('Add a title and some findings first', 'error'); return;
+    }
+    setDrafting(true);
+    try {
+      const ec = await api.assistBriefDraft(sessionId, draft, audience);
+      setDraft((d) => ({ ...d, email_content: { ...d.email_content, ...ec } }));
+      onShowToast?.('Narrative drafted from your findings — review & edit', 'success');
+    } catch (e) {
+      onShowToast?.(e instanceof Error ? e.message : 'AI draft failed', 'error');
+    } finally {
+      setDrafting(false);
+    }
+  }, [draft, sessionId, audience, onShowToast]);
 
   if (!open) return null;
 
@@ -179,13 +217,18 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
 
         {tab === 'attack' && (
           <Section title="ATT&CK Techniques" onAdd={addTechnique} addLabel="Add technique" empty={draft.attack_chain.length === 0}>
+            <datalist id="attack-tech-list">
+              {(ATTACK_TECHNIQUES as Array<{ id: string; name: string }>).map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </datalist>
             {draft.attack_chain.map((t, i) => (
               <Card key={i} onRemove={() => mutList('attack_chain', (a) => removeAt(a, i))}>
                 <div className="grid grid-cols-4 gap-2">
-                  <LabeledInput label="Technique ID" value={t.technique_id} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { technique_id: v }))} placeholder="T1059" />
+                  <LabeledInput label="Technique ID" value={t.technique_id} onChange={(v) => applyTechniqueId(i, v)} placeholder="T1059" list="attack-tech-list" />
                   <div className="col-span-2"><LabeledInput label="Technique Name" value={t.technique_name} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { technique_name: v }))} placeholder="Command and Scripting Interpreter" /></div>
                   <LabeledSelect label="Tactic" value={t.tactic} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { tactic: v }))} options={TACTICS} />
-                  <LabeledInput label="Sub-technique ID" value={t.sub_technique_id ?? ''} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { sub_technique_id: v || null }))} placeholder="T1059.001" />
+                  <LabeledInput label="Sub-technique ID" value={t.sub_technique_id ?? ''} onChange={(v) => applySubTechniqueId(i, v)} placeholder="T1059.001" list="attack-tech-list" />
                   <div className="col-span-3"><LabeledInput label="Sub-technique Name" value={t.sub_technique_name ?? ''} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { sub_technique_name: v || null }))} placeholder="PowerShell" /></div>
                   <div className="col-span-4"><LabeledInput label="Evidence" value={t.evidence} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { evidence: v }))} placeholder="How this technique was applied in the incident." /></div>
                   <LabeledSelect label="Confidence" value={t.confidence} onChange={(v) => mutList('attack_chain', (a) => updateAt(a, i, { confidence: v as AttackTechnique['confidence'] }))} options={CONFIDENCE as unknown as string[]} />
@@ -263,6 +306,12 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
 
         {tab === 'narrative' && (
           <>
+            <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2">
+              <span className="text-[11px] text-muted-foreground">Let the AI draft the narrative from the findings you authored above. You stay the author — review &amp; edit before saving.</span>
+              <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleAiDraft} disabled={drafting}>
+                {drafting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Draft with AI
+              </Button>
+            </div>
             <Field label="Email Subject">
               <TextInput value={(draft.email_content.subject as string) ?? ''} onChange={(v) => setEmail('subject', v)} placeholder="TLP:AMBER | High | Threat brief | 2026-07-06" />
             </Field>
@@ -320,8 +369,8 @@ function Card({ onRemove, children }: { onRemove: () => void; children: React.Re
   );
 }
 const inputCls = 'w-full bg-secondary/40 border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-500/50';
-function TextInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
-  return <input type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={cn(inputCls, mono && 'font-mono')} />;
+function TextInput({ value, onChange, placeholder, mono, list }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; list?: string }) {
+  return <input type="text" value={value} placeholder={placeholder} list={list} onChange={(e) => onChange(e.target.value)} className={cn(inputCls, mono && 'font-mono')} />;
 }
 function TextArea({ value, onChange, placeholder, rows = 3 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
   return <textarea value={value} placeholder={placeholder} rows={rows} onChange={(e) => onChange(e.target.value)} className={cn(inputCls, 'resize-y')} />;

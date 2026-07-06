@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, appendAuditLog } from '../db/database.js';
+import { getDb, appendAuditLog, loadMergedSettings } from '../db/database.js';
 import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
 import { extractReferences } from '../lib/references.js';
-import type { AnalysisResult } from '../lib/claude.js';
+import { generateBrief, type AnalysisResult } from '../lib/claude.js';
+import { parseSections } from '../lib/sections.js';
 import logger from '../lib/logger.js';
 
 const router = Router();
@@ -458,6 +459,41 @@ router.put('/:id/result', async (req: Request, res: Response) => {
   });
 
   res.json({ ok: true, version: newVersion });
+});
+
+// POST /api/sessions/:id/assist/brief — AI-draft the stakeholder narrative from the
+// analyst's authored (possibly unsaved) findings. Returns email_content for review;
+// never persists — the analyst accepts it in the Workbench, then Saves.
+router.post('/:id/assist/brief', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user.role === 'viewer') { res.status(403).json({ error: 'Viewers cannot use AI assist' }); return; }
+  const session = await fetchSessionWithTeamCheck(req, res);
+  if (!session) return;
+
+  const { result, audience } = req.body as { result?: AnalysisResult; audience?: string };
+  if (!result?.incident_summary?.title?.trim()) {
+    res.status(400).json({ error: 'Add an incident title and some findings before drafting a brief.' });
+    return;
+  }
+  try {
+    const settings = await loadMergedSettings(authReq.teamId);
+    const sections = parseSections(settings.report_sections || '');
+    const { email_content: _drop, ...technical } = result;
+    void _drop;
+    const audienceKey = audience || (session.audience as string) || 'soc';
+    const emailContent = await generateBrief(technical, settings, audienceKey, sections);
+    appendAuditLog({
+      analyst_name: authReq.user.displayName,
+      user_id: authReq.user.id,
+      session_id: req.params.id,
+      action: 'assist_brief',
+      details: `audience=${audienceKey}`,
+    });
+    res.json({ email_content: emailContent });
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'AI brief draft failed');
+    res.status(502).json({ error: err instanceof Error ? err.message : 'AI draft failed' });
+  }
 });
 
 // DELETE /api/sessions/:id — soft-delete a session (recoverable for 7 days,

@@ -969,8 +969,9 @@ router.post('/report-preview', async (req: Request, res: Response) => {
   const analystName = settings.analyst_name || 'CTI Analyst';
   const orgName = settings.org_name || '';
   const sections = parseSections(settings.report_sections || '');
+  const previewSession = (await db.prepare('SELECT origin FROM sessions WHERE id = ?').get(session_id)) as { origin?: string } | undefined;
 
-  const markdown = buildMarkdownReport(result, sections, { analystName, orgName, tlp, audience, template: settings.report_template || undefined });
+  const markdown = buildMarkdownReport(result, sections, { analystName, orgName, tlp, audience, template: settings.report_template || undefined, origin: previewSession?.origin === 'workbench' ? 'workbench' : undefined });
 
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.send(markdown);
@@ -995,8 +996,8 @@ router.post('/export/report', async (req: Request, res: Response) => {
   const db = getDb();
   const row = (await db.prepare('SELECT result_json, analyst_overrides FROM analysis_results WHERE session_id = ? ORDER BY version DESC LIMIT 1').get(session_id)) as
     { result_json: string; analyst_overrides?: string } | undefined;
-  const session = (await db.prepare('SELECT name, status FROM sessions WHERE id = ?').get(session_id)) as
-    { name: string; status: string } | undefined;
+  const session = (await db.prepare('SELECT name, status, origin FROM sessions WHERE id = ?').get(session_id)) as
+    { name: string; status: string; origin?: string } | undefined;
 
   if (!row) {
     res.status(404).json({ error: 'No analysis found for this session' });
@@ -1031,6 +1032,7 @@ router.post('/export/report', async (req: Request, res: Response) => {
     tlp: tlp || 'AMBER',
     audience: audience || 'general',
     template: settings.report_template || undefined,
+    origin: session?.origin === 'workbench' ? 'workbench' : undefined,
   });
 
   const date     = new Date().toISOString().split('T')[0];

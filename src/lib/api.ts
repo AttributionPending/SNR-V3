@@ -155,6 +155,21 @@ export async function createSession(data: {
   return j.id;
 }
 
+/** AI-draft the stakeholder narrative from authored findings (Workbench assist). */
+export async function assistBriefDraft(
+  sessionId: string,
+  result: AnalysisResult,
+  audience?: string,
+): Promise<AnalysisResult['email_content']> {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/assist/brief`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ result, audience }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'AI draft failed');
+  return (await res.json() as { email_content: AnalysisResult['email_content'] }).email_content;
+}
+
 /** Save an analyst-authored AnalysisResult (Workbench). Returns the new version. */
 export async function saveSessionResult(
   sessionId: string,

@@ -513,3 +513,73 @@ Structure the brief as an intelligence document:
 
   return { ...technical, email_content: emailContent };
 }
+
+/**
+ * Generate ONLY the Phase-2 stakeholder brief (email_content) from an already
+ * structured technical result — used by the Analyst Workbench's "Draft narrative
+ * from my findings" so an analyst who authored the intel by hand can still get an
+ * AI-written brief. Mirrors the Phase-2 block of analyzeWithClaude. The analysis
+ * pipeline itself is untouched (this path is additive).
+ */
+export async function generateBrief(
+  technical: TechnicalResult,
+  settings: Record<string, string>,
+  audienceKey: string,
+  sections: BriefSection[],
+  onStream?: (chunk: string) => void,
+): Promise<AnalysisResult['email_content']> {
+  const provider = await getProvider(settings);
+  const systemPrompt = settings.system_prompt_override?.trim() || SYSTEM_PROMPT;
+  const audienceLabel: Record<string, string> = {
+    purple_team: 'Purple Team', soc: 'SOC', red_team: 'Red Team', dr: 'Detection & Response', general: 'General',
+  };
+  const audKey = audienceKey.replace(/-/g, '_');
+  const audience = audienceLabel[audKey] ?? audienceKey;
+  const audiencePrompt = settings[`audience_prompt_${audKey}`]?.trim() || AUDIENCE_PROMPTS[audKey] || AUDIENCE_PROMPTS['soc'];
+  const today = new Date().toISOString().split('T')[0];
+
+  const emailSchema = buildEmailSchema(sections) as JsonSchema;
+  const sectionGuidance = buildSectionGuidance(sections);
+
+  const technicalFindings = `Technical findings to communicate:
+- Incident: ${technical.incident_summary.title} | Severity: ${technical.incident_summary.severity}
+- Description: ${technical.incident_summary.description}
+- ATT&CK techniques: ${technical.attack_chain.map((t) => `${t.sub_technique_id ?? t.technique_id} (${t.tactic})`).join(', ')}
+- IOCs: ${technical.iocs.slice(0, 20).map((i) => `[${i.type}] ${i.value}`).join(', ')}
+- Detection rules: ${technical.detection_rules.length} rules
+- Affected assets: ${technical.affected_assets.map((a) => a.hostname ?? a.ip ?? 'unknown').join(', ')}
+- Threat actor: ${technical.threat_actor?.name ?? 'Unknown'}
+${settings.org_evaluation_criteria?.trim() ? `\nOrganizational context for tailoring: ${settings.org_evaluation_criteria}` : ''}`;
+
+  let emailPrompt: string;
+  if (settings.phase2_template_override?.trim()) {
+    emailPrompt = settings.phase2_template_override
+      .replace(/\{audience\}/g, audience)
+      .replace(/\{date\}/g, today)
+      .replace(/\{audience_guidance\}/g, audiencePrompt)
+      .replace(/\{technical_findings\}/g, technicalFindings)
+      .replace(/\{section_guidance\}/g, sectionGuidance);
+  } else {
+    emailPrompt = `Draft an intelligence brief for a ${audience} audience.
+Date: ${today}
+Audience guidance: ${audiencePrompt}
+
+${technicalFindings}
+
+${sectionGuidance}
+
+Subject line format: TLP:{LEVEL} | ${technical.incident_summary.severity} | {ThreatCategory} | ${today}
+
+Structure the brief as an intelligence document. Base every statement strictly on the
+technical findings above — do not invent techniques, IOCs, or attribution.`;
+  }
+
+  return provider.analyze<AnalysisResult['email_content']>(
+    systemPrompt,
+    emailPrompt,
+    'email_content',
+    'Output the structured stakeholder intelligence brief content',
+    emailSchema,
+    onStream,
+  );
+}
