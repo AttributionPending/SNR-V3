@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import SettingsModal from './components/SettingsModal';
 import EmailStudio from './components/EmailStudio';
+import Workbench, { blankResult } from './components/Workbench';
 import ReportsModal from './components/ReportsModal';
 import HelpModal from './components/HelpModal';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -95,6 +96,7 @@ function AppMain() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [brandingStudioOpen, setBrandingStudioOpen] = useState(false);
+  const [workbench, setWorkbench] = useState<{ initial: AnalysisResult; version?: number } | null>(null);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -283,6 +285,35 @@ function AppMain() {
       setError('Failed to load session.');
     }
   };
+
+  // Analyst Workbench — start a blank authored report (original research, no source).
+  const handleWriteReport = useCallback(async () => {
+    try {
+      const name = `Report ${new Date().toISOString().split('T')[0]}`;
+      const id = await api.createSession({ name, audience, origin: 'workbench' });
+      handleNewSession();
+      setActiveSessionId(id);
+      setSessionName(name);
+      setSessionStatus('pending');
+      await loadSessions();
+      setWorkbench({ initial: blankResult() });
+    } catch {
+      showToast('Failed to start a new report', 'error');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audience, loadSessions, showToast]);
+
+  // Open the Workbench to hand-edit the currently loaded session's result.
+  const handleOpenWorkbench = useCallback(() => {
+    if (result) setWorkbench({ initial: result });
+  }, [result]);
+
+  const handleWorkbenchSaved = useCallback(async () => {
+    setWorkbench(null);
+    if (activeSessionId) await handleSelectSession(activeSessionId);
+    await loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, loadSessions]);
 
   const handleDeleteSession = useCallback(async (id: string) => {
     try {
@@ -586,6 +617,7 @@ function AppMain() {
           activeSessionId={activeSessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
+          onWriteReport={handleWriteReport}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenReports={() => setReportsOpen(true)}
           onOpenHelp={() => setHelpOpen(true)}
@@ -649,6 +681,19 @@ function AppMain() {
             sessionStatus={sessionStatus}
             onReanalyze={handleReanalyze}
             analystOverrides={analystOverrides}
+            onOpenWorkbench={handleOpenWorkbench}
+          />
+        )}
+
+        {workbench && activeSessionId && (
+          <Workbench
+            open
+            onClose={() => setWorkbench(null)}
+            sessionId={activeSessionId}
+            initial={workbench.initial}
+            expectedVersion={workbench.version}
+            onSaved={handleWorkbenchSaved}
+            onShowToast={showToast}
           />
         )}
 

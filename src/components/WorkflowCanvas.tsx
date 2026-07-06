@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   ChevronLeft, Activity, AlertCircle, NotebookPen, Download, Package, Save,
   Mail, Map, Shield, Pencil, Eye, RotateCcw, ChevronDown, ChevronUp, FileText,
-  Maximize2, X,
+  Maximize2, X, PenLine,
 } from 'lucide-react';
 import InputPanel from './InputPanel';
 import AttackChainView from './AttackChainView';
@@ -84,6 +84,7 @@ interface Props {
   sessionStatus?: string | null;
   onReanalyze?: (audienceOverride?: string) => void;
   analystOverrides?: Record<string, string>;
+  onOpenWorkbench?: () => void;
 }
 
 // ── WorkflowCanvas ────────────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ export default function WorkflowCanvas({
   captureAttackChain, customAudiences = [], onResultUpdate, onSaveComplete,
   sessionTags = [], allTags = [], onUpdateTags,
   linkedThreatActor, threatActors = [], onActorAssigned,
-  sessionStatus, onReanalyze, analystOverrides = {},
+  sessionStatus, onReanalyze, analystOverrides = {}, onOpenWorkbench,
 }: Props) {
   // ── Workflow step ────────────────────────────────────────────────────────
   const [step, setStep] = useState<'input' | 'results'>('input');
@@ -507,6 +508,21 @@ export default function WorkflowCanvas({
             >
               <RotateCcw className="w-3 h-3 mr-1" />
               Re-analyze
+            </Button>
+          )}
+
+          {/* Edit in Workbench */}
+          {result && sessionId && onOpenWorkbench && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-cyan-400"
+              onClick={onOpenWorkbench}
+              disabled={isAnalyzing}
+              title="Hand-edit this report's techniques, IOCs, rules and narrative in the Analyst Workbench"
+            >
+              <PenLine className="w-3 h-3 mr-1" />
+              Workbench
             </Button>
           )}
 

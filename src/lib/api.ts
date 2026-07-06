@@ -143,6 +143,7 @@ export async function createSession(data: {
   name: string;
   incident_id?: string;
   audience: string;
+  origin?: 'analysis' | 'workbench';
 }): Promise<string> {
   const res = await authFetch(`${BASE}/sessions`, {
     method: 'POST',
@@ -152,6 +153,21 @@ export async function createSession(data: {
   if (!res.ok) throw new Error('Failed to create session');
   const j = await res.json() as { id: string };
   return j.id;
+}
+
+/** Save an analyst-authored AnalysisResult (Workbench). Returns the new version. */
+export async function saveSessionResult(
+  sessionId: string,
+  result: AnalysisResult,
+  expectedVersion?: number,
+): Promise<number> {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/result`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ result, expectedVersion }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to save report');
+  return (await res.json() as { version: number }).version;
 }
 
 export async function saveNote(sessionId: string, content: string): Promise<void> {

@@ -117,6 +117,8 @@ export interface Session {
   version: number;
   status: 'pending' | 'analyzing' | 'complete' | 'error' | 'failed';
   tags?: string[];
+  /** 'workbench' = analyst-authored original research; 'analysis' = AI-derived. */
+  origin?: 'analysis' | 'workbench';
 }
 
 export type AudienceType = 'purple_team' | 'soc' | 'red_team' | 'dr' | 'general';

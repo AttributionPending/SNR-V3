@@ -3,6 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, appendAuditLog } from '../db/database.js';
 import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
+import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
+import { validateAttackFlow } from '../lib/attack-flow.js';
+import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
+import { extractReferences } from '../lib/references.js';
+import type { AnalysisResult } from '../lib/claude.js';
 import logger from '../lib/logger.js';
 
 const router = Router();
@@ -85,7 +90,7 @@ router.get('/', async (req: Request, res: Response) => {
 
   const sessions = await db.prepare(`
     SELECT s.id, s.name, s.incident_id, s.created_at, s.updated_at,
-           s.severity, s.audience, s.version, s.status, s.tags
+           s.severity, s.audience, s.version, s.status, s.tags, s.origin
     FROM sessions s
     ${whereClauseFinal}
     ORDER BY s.created_at DESC
@@ -252,15 +257,17 @@ router.post('/', async (req: Request, res: Response) => {
   const db = getDb();
   const id = uuidv4();
   const now = Date.now();
-  const { name, incident_id, audience } = req.body as {
+  const { name, incident_id, audience, origin } = req.body as {
     name?: string;
     incident_id?: string;
     audience?: string;
+    origin?: string;
   };
+  const sessionOrigin = origin === 'workbench' ? 'workbench' : 'analysis';
 
   await db.prepare(`
-    INSERT INTO sessions (id, name, incident_id, created_at, updated_at, audience, status, team_id, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    INSERT INTO sessions (id, name, incident_id, created_at, updated_at, audience, status, team_id, created_by, origin)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
   `).run(
     id,
     name ?? `Incident ${new Date(now).toISOString().split('T')[0]}`,
@@ -270,6 +277,7 @@ router.post('/', async (req: Request, res: Response) => {
     audience ?? 'soc',
     authReq.teamId || null,
     authReq.user.id,
+    sessionOrigin,
   );
 
   appendAuditLog({
@@ -371,6 +379,85 @@ router.patch('/:id/overrides', async (req: Request, res: Response) => {
   });
 
   res.json({ ok: true });
+});
+
+// PUT /api/sessions/:id/result — save an analyst-authored AnalysisResult (Workbench).
+// Mirrors the worker's persistence (analysis_results versioning + session status) but
+// without the LLM: the analyst *is* the source. Reuses the same validators/linker.
+router.put('/:id/result', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user.role === 'viewer') {
+    res.status(403).json({ error: 'Viewers cannot author reports' });
+    return;
+  }
+  const session = await fetchSessionWithTeamCheck(req, res);
+  if (!session) return;
+
+  const db = getDb();
+  const { result, expectedVersion } = req.body as { result?: AnalysisResult; expectedVersion?: number };
+
+  if (!result || typeof result !== 'object') {
+    res.status(400).json({ error: 'result object is required' });
+    return;
+  }
+  if (!result.incident_summary?.title?.trim() || !result.incident_summary?.severity) {
+    res.status(400).json({ error: 'incident_summary.title and severity are required' });
+    return;
+  }
+
+  // Optimistic locking — reject if another writer bumped the version meanwhile.
+  if (expectedVersion !== undefined) {
+    const current = (await db.prepare('SELECT MAX(version) as v FROM analysis_results WHERE session_id = ?').get(req.params.id)) as { v: number | null };
+    if (current.v !== null && current.v !== expectedVersion) {
+      res.status(409).json({ error: 'This report was updated elsewhere. Reload and try again.' });
+      return;
+    }
+  }
+
+  // Normalize / validate — same passes the worker applies to LLM output.
+  result.attack_chain = Array.isArray(result.attack_chain)
+    ? result.attack_chain.map((t, i) => ({ ...t, order: i }))
+    : [];
+  result.iocs = Array.isArray(result.iocs) && result.iocs.length > 0
+    ? validateAndDeduplicateIOCs(result.iocs)
+    : (result.iocs ?? []);
+  result.detection_rules = result.detection_rules ?? [];
+  result.affected_assets = result.affected_assets ?? [];
+  result.attack_flow = validateAttackFlow(result.attack_flow, result.attack_chain);
+  // References: derive deterministically from the analyst's cited sources
+  // (notes + description; IOC URLs excluded) unless the analyst authored the
+  // section directly. Mirrors the LLM pipeline's deterministic References.
+  if (result.email_content && !String(result.email_content.references ?? '').trim()) {
+    const cited = [result.incident_summary.analyst_notes, result.incident_summary.description].filter(Boolean).join('\n\n');
+    result.email_content.references = extractReferences(cited, result.iocs.map((i) => i.value));
+  }
+
+  const now = Date.now();
+  const latest = ((await db.prepare('SELECT MAX(version) as v FROM analysis_results WHERE session_id = ?').get(req.params.id)) as { v: number | null }).v ?? 0;
+  const newVersion = latest + 1;
+
+  await db.prepare('INSERT INTO analysis_results (id, session_id, version, result_json, created_at) VALUES (?,?,?,?,?)')
+    .run(uuidv4(), req.params.id, newVersion, JSON.stringify(result), now);
+  await db.prepare('UPDATE sessions SET status = ?, updated_at = ?, severity = ?, version = ? WHERE id = ?')
+    .run('complete', now, result.incident_summary.severity, newVersion, req.params.id);
+
+  // Best-effort threat-actor auto-link (same as the analysis pipeline).
+  try {
+    await autoLinkThreatActor(db, req.params.id, result, (session.team_id as string) || authReq.teamId, authReq.user.id);
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'Threat actor auto-link failed (non-fatal)');
+  }
+
+  appendAuditLog({
+    analyst_name: authReq.user.displayName,
+    user_id: authReq.user.id,
+    session_id: req.params.id,
+    action: 'report_authored',
+    techniques_identified: result.attack_chain.map((t) => t.sub_technique_id ?? t.technique_id),
+    details: `severity=${result.incident_summary.severity}, version=${newVersion}`,
+  });
+
+  res.json({ ok: true, version: newVersion });
 });
 
 // DELETE /api/sessions/:id — soft-delete a session (recoverable for 7 days,

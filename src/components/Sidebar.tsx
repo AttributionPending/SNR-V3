@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square } from 'lucide-react'
+import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square, PenLine } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
@@ -29,6 +29,7 @@ interface SidebarProps {
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
+  onWriteReport?: () => void;
   onOpenSettings: () => void;
   onOpenReports: () => void;
   onOpenHelp: () => void;
@@ -59,7 +60,7 @@ const severityVariant = (s: string | null): 'critical' | 'high' | 'medium' | 'lo
   return map[s ?? ''] ?? 'secondary';
 };
 
-export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onActorAssigned }: SidebarProps) {
+export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onWriteReport, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onActorAssigned }: SidebarProps) {
   const { user, teams, activeTeamId, switchTeam, logout, isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState<'sessions' | 'actors'>('sessions');
 
@@ -359,8 +360,8 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
         <div className="mt-1 text-[10px] text-muted-foreground/60">v1.0</div>
       </div>
 
-      {/* New Analysis button */}
-      <div className="p-3 border-b border-border">
+      {/* New Analysis / Write report */}
+      <div className="p-3 border-b border-border space-y-2">
         <Button
           variant="cyan"
           className="w-full h-9 text-sm"
@@ -370,6 +371,17 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
           <Plus className="w-4 h-4" />
           New Analysis
         </Button>
+        {onWriteReport && (
+          <button
+            onClick={onWriteReport}
+            disabled={loading}
+            className="w-full h-8 text-xs flex items-center justify-center gap-1.5 rounded-md border border-border text-muted-foreground hover:text-cyan-300 hover:border-cyan-500/40 transition-colors disabled:opacity-50"
+            title="Write your own report — original research with no source article"
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            Write report
+          </button>
+        )}
       </div>
 
       {/* Global Intelligence Search */}
@@ -653,8 +665,11 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
                           {truncate(session.name, 26)}
                         </div>
                       )}
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
                         {formatTimestamp(session.created_at)}
+                        {session.origin === 'workbench' && (
+                          <span className="text-[8px] uppercase tracking-wide text-cyan-400/80 border border-cyan-500/30 rounded px-1 py-0 leading-tight">Authored</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
