@@ -44,6 +44,10 @@ services:
       BACKUP_DIR: /data/backups
       # Behind the caddy proxy → trust 1 hop for real client IPs / rate limiting
       TRUST_PROXY: "1"
+      # The Workbench AI-assist endpoints run the LLM synchronously in the API
+      # process; give them the same headroom as the worker (default 120s is too
+      # tight for a large "Suggest from notes"). Override in .env if needed.
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-300}
     volumes:
       - snr-data:/data          # scheduled pg_dump backups persist here
     expose:

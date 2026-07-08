@@ -7,6 +7,7 @@ import RichTextEditor from './RichTextEditor';
 import AttackFlowView from './AttackFlowView';
 import { Button } from './ui/button';
 import ATTACK_TECHNIQUES from '@/data/attack-techniques.json';
+import { mergeExtracted, mergeRules } from '@/lib/workbench-merge';
 import type { AnalysisResult, AttackTechnique, IOC, DetectionRule, AffectedAsset, BriefSection, AttackFlow, AttackFlowNode } from '@/types';
 
 // id → { name, tactic } lookup for the ATT&CK technique picker autocomplete.
@@ -158,25 +159,9 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
     setExtracting(true);
     try {
       const t = await api.assistExtract(sessionId, notes);
-      const techKey = (x: AttackTechnique) => `${x.technique_id}|${x.sub_technique_id ?? ''}`.toUpperCase();
-      const iocKey = (x: IOC) => `${x.type}|${x.value}`.toLowerCase();
-      const ruleKey = (x: DetectionRule) => x.rule_name.toLowerCase();
-      const existTech = new Set(draft.attack_chain.map(techKey));
-      const existIoc = new Set(draft.iocs.map(iocKey));
-      const existRule = new Set(draft.detection_rules.map(ruleKey));
-      const newTech = (t.attack_chain ?? []).filter((x) => x.technique_id && !existTech.has(techKey(x)));
-      const newIocs = (t.iocs ?? []).filter((x) => x.value && !existIoc.has(iocKey(x)));
-      const newRules = (t.detection_rules ?? []).filter((x) => x.rule_name && !existRule.has(ruleKey(x)));
-      setDraft((d) => ({
-        ...d,
-        attack_chain: [...d.attack_chain, ...newTech].map((x, i) => ({ ...x, order: i })),
-        iocs: [...d.iocs, ...newIocs],
-        detection_rules: [...d.detection_rules, ...newRules],
-        affected_assets: d.affected_assets.length ? d.affected_assets : (t.affected_assets ?? []),
-        threat_actor: d.threat_actor.name ? d.threat_actor : (t.threat_actor ?? d.threat_actor),
-        attack_flow: (d.attack_flow?.nodes?.length) ? d.attack_flow : t.attack_flow,
-      }));
-      onShowToast?.(`Merged ${newTech.length} technique(s), ${newIocs.length} IOC(s), ${newRules.length} rule(s)${t.attack_flow && !draft.attack_flow?.nodes?.length ? ' + a flow' : ''} — review & edit`, 'success');
+      const { result, counts } = mergeExtracted(draft, t);
+      setDraft(result);
+      onShowToast?.(`Merged ${counts.techniques} technique(s), ${counts.iocs} IOC(s), ${counts.rules} rule(s)${counts.flowAdded ? ' + a flow' : ''} — review & edit`, 'success');
     } catch (e) {
       onShowToast?.(e instanceof Error ? e.message : 'AI extract failed', 'error');
     } finally {
@@ -190,10 +175,9 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
     setGeneratingRules(true);
     try {
       const rules = await api.assistRules(sessionId, draft);
-      const exist = new Set(draft.detection_rules.map((r) => r.rule_name.toLowerCase()));
-      const add = rules.filter((r) => r.rule_name && !exist.has(r.rule_name.toLowerCase()));
-      setDraft((d) => ({ ...d, detection_rules: [...d.detection_rules, ...add] }));
-      onShowToast?.(`Generated ${add.length} detection rule(s) — review & edit`, 'success');
+      const { result, added } = mergeRules(draft, rules);
+      setDraft(result);
+      onShowToast?.(`Generated ${added} detection rule(s) — review & edit`, 'success');
     } catch (e) {
       onShowToast?.(e instanceof Error ? e.message : 'AI rules generation failed', 'error');
     } finally {
@@ -297,7 +281,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
               <TextArea value={draft.incident_summary.analyst_notes} onChange={(v) => setSummary('analyst_notes', v)} rows={4} placeholder={'Write up your research here.\nReference: https://your-source…'} />
             </Field>
             <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2">
-              <span className="text-[11px] text-muted-foreground">Have a freeform write-up? Let the AI extract ATT&amp;CK techniques, IOCs, detection rules &amp; a flow from your notes — then merge them in and edit.</span>
+              <span className="text-[11px] text-muted-foreground">Have a freeform write-up? Let the AI extract ATT&amp;CK techniques, IOCs, detection rules &amp; a flow from your notes — then merge them in and edit. <span className="text-muted-foreground/60">(can take up to a minute)</span></span>
               <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleExtract} disabled={extracting}>
                 {extracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Suggest from notes
               </Button>
@@ -348,7 +332,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
         {tab === 'rules' && (
           <>
           <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2 mb-3">
-            <span className="text-[11px] text-muted-foreground">Generate Sigma/YARA/Suricata rules for the ATT&amp;CK techniques you added — appended below for review.</span>
+            <span className="text-[11px] text-muted-foreground">Generate Sigma/YARA/Suricata rules for the ATT&amp;CK techniques you added — appended below for review. <span className="text-muted-foreground/60">(can take up to a minute)</span></span>
             <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleGenerateRules} disabled={generatingRules}>
               {generatingRules ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Generate detection rules
             </Button>
@@ -472,7 +456,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
         {tab === 'narrative' && (
           <>
             <div className="flex items-center justify-between gap-2 border border-cyan-500/20 bg-cyan-500/5 rounded p-2">
-              <span className="text-[11px] text-muted-foreground">Let the AI draft the narrative from the findings you authored above. You stay the author — review &amp; edit before saving.</span>
+              <span className="text-[11px] text-muted-foreground">Let the AI draft the narrative from the findings you authored above. You stay the author — review &amp; edit before saving. <span className="text-muted-foreground/60">(can take up to a minute)</span></span>
               <Button variant="outline" size="sm" className="text-xs h-7 gap-1.5 flex-shrink-0" onClick={handleAiDraft} disabled={drafting}>
                 {drafting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Draft with AI
               </Button>

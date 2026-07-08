@@ -405,6 +405,14 @@ router.put('/:id/result', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'incident_summary.title and severity are required' });
     return;
   }
+  // Bound the payload — reject implausibly large authored reports (cost/DoS guard;
+  // the 12mb JSON body limit is the outer cap, these are the semantic caps).
+  if ((result.attack_chain?.length ?? 0) > 200 || (result.iocs?.length ?? 0) > 1000 ||
+      (result.detection_rules?.length ?? 0) > 200 || (result.affected_assets?.length ?? 0) > 500 ||
+      (result.attack_flow?.nodes?.length ?? 0) > 50 || (result.attack_flow?.edges?.length ?? 0) > 200) {
+    res.status(400).json({ error: 'Report is too large (too many techniques/IOCs/rules/flow nodes).' });
+    return;
+  }
 
   // Optimistic locking — reject if another writer bumped the version meanwhile.
   if (expectedVersion !== undefined) {
@@ -507,6 +515,7 @@ router.post('/:id/assist/extract', async (req: Request, res: Response) => {
 
   const { notes } = req.body as { notes?: string };
   if (!notes || !notes.trim()) { res.status(400).json({ error: 'notes are required' }); return; }
+  if (notes.length > 20000) { res.status(400).json({ error: 'Notes are too long (max 20,000 characters). Trim or split them.' }); return; }
   try {
     const settings = await loadMergedSettings(authReq.teamId);
     const technical = await extractTechnical({
@@ -546,6 +555,8 @@ router.post('/:id/assist/rules', async (req: Request, res: Response) => {
     const settings = await loadMergedSettings(authReq.teamId);
     const { email_content: _drop, ...technical } = result;
     void _drop;
+    // Bound cost — generate rules for at most the first 40 techniques.
+    technical.attack_chain = (technical.attack_chain ?? []).slice(0, 40);
     const detection_rules = await generateDetectionRules(technical, settings);
     appendAuditLog({
       analyst_name: authReq.user.displayName,

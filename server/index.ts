@@ -129,6 +129,16 @@ const passwordLimiter = rateLimit({
   message: { error: 'Too many password change attempts. Please try again later.' },
 });
 
+// The Workbench AI-assist endpoints each run a full LLM call (token cost + ~60s).
+// Throttle them tighter than the shared apiLimiter so they can't be hammered.
+const assistLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,                   // 30 AI-assist calls per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI-assist requests. Please wait a bit and try again.' },
+});
+
 app.use('/api/', apiLimiter);
 
 // Body parsing (not for file upload routes — multer handles those)
@@ -150,6 +160,7 @@ app.use('/api/auth', authRouter);
 // ── Protected routes — require authentication ────────────────────────────
 app.use('/api/users', requireAuth, usersRouter);
 app.use('/api/teams', requireAuth, teamsRouter);
+app.use('/api/sessions/:id/assist', assistLimiter);
 app.use('/api/sessions', requireAuth, requireTeamMember, sessionsRouter);
 app.use('/api/analyze', requireAuth, requireTeamMember, analyzeRouter);
 app.use('/api/settings', requireAuth, requireTeamMember, settingsRouter);
