@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { CheckCircle, XCircle, Info, X, Loader2 } from 'lucide-react';
 import { TooltipProvider } from './components/ui/tooltip';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -6,8 +6,10 @@ import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import SettingsModal from './components/SettingsModal';
-import EmailStudio from './components/EmailStudio';
-import Workbench, { blankResult } from './components/Workbench';
+import { blankResult } from './lib/workbench-merge';
+// Heavy full-screen overlays (reactflow / tiptap / ATT&CK dataset) — load on demand.
+const EmailStudio = lazy(() => import('./components/EmailStudio'));
+const Workbench = lazy(() => import('./components/Workbench'));
 import ReportsModal from './components/ReportsModal';
 import HelpModal from './components/HelpModal';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -686,16 +688,18 @@ function AppMain() {
         )}
 
         {workbench && activeSessionId && (
-          <Workbench
-            open
-            onClose={() => setWorkbench(null)}
-            sessionId={activeSessionId}
-            initial={workbench.initial}
-            expectedVersion={workbench.version}
-            audience={audience}
-            onSaved={handleWorkbenchSaved}
-            onShowToast={showToast}
-          />
+          <Suspense fallback={null}>
+            <Workbench
+              open
+              onClose={() => setWorkbench(null)}
+              sessionId={activeSessionId}
+              initial={workbench.initial}
+              expectedVersion={workbench.version}
+              audience={audience}
+              onSaved={handleWorkbenchSaved}
+              onShowToast={showToast}
+            />
+          </Suspense>
         )}
 
         <SettingsModal
@@ -704,14 +708,16 @@ function AppMain() {
           onOpenEmailStudio={() => setBrandingStudioOpen(true)}
         />
         {brandingStudioOpen && (
-          <EmailStudio
-            open={brandingStudioOpen}
-            standalone
-            onClose={() => setBrandingStudioOpen(false)}
-            audience={audience}
-            tlp="AMBER"
-            onShowToast={showToast}
-          />
+          <Suspense fallback={null}>
+            <EmailStudio
+              open={brandingStudioOpen}
+              standalone
+              onClose={() => setBrandingStudioOpen(false)}
+              audience={audience}
+              tlp="AMBER"
+              onShowToast={showToast}
+            />
+          </Suspense>
         )}
         <ReportsModal
           open={reportsOpen}

@@ -81,6 +81,13 @@ export function extractReferences(rawInput: string, iocValues: string[] = []): s
     if (!seen.has(key)) { seen.add(key); cves.push(cve); }
   }
 
-  const all = [...refLines, ...urls, ...cves];
+  // Avoid redundancy: if a URL/CVE already appears inside a captured
+  // "Reference:/Source:" line, don't list it a second time on its own.
+  const inRefLines = (s: string) => refLines.some((r) => r.toLowerCase().includes(s.toLowerCase()));
+  const all = [
+    ...refLines,
+    ...urls.filter((u) => !inRefLines(u)),
+    ...cves.filter((c) => !inRefLines(c)),
+  ];
   return all.length > 0 ? all.join('\n') : NO_REFERENCES;
 }

@@ -32,7 +32,8 @@ export function buildStixBundle(
   tlp: TLPLevel,
   analystName: string,
   analystOrg: string,
-  analystOverrides?: Record<string, string>
+  analystOverrides?: Record<string, string>,
+  origin?: 'analysis' | 'workbench',
 ): StixBundle {
   const now = stixTimestamp();
   const markingRef = TLP_MARKING_IDS[tlp];
@@ -62,6 +63,8 @@ export function buildStixBundle(
     name: analystName,
     identity_class: 'individual',
     object_marking_refs: [markingRef],
+    // Provenance: analyst-authored original research (custom property).
+    ...(origin === 'workbench' ? { x_snr_origin: 'analyst-authored' } : {}),
   });
 
   // Threat Actor (if attributable)

@@ -1,4 +1,39 @@
 import { describe, it, expect } from 'vitest';
+import { buildStixBundle } from '../server/lib/stix.js';
+import type { AnalysisResult } from '../server/lib/claude.js';
+
+function bundleResult(): AnalysisResult {
+  return {
+    incident_summary: { title: 'Incident', severity: 'High', confidence: 'High', description: 'd', analyst_notes: '' },
+    attack_chain: [],
+    iocs: [],
+    detection_rules: [],
+    threat_actor: { name: null, aliases: [], motivation: null, attribution_confidence: null, malware_families: [] },
+    affected_assets: [],
+    email_content: { subject: 's', severity_badge: 'High' },
+  } as AnalysisResult;
+}
+
+describe('buildStixBundle — provenance (workbench origin)', () => {
+  const analyst = () =>
+    (buildStixBundle(bundleResult(), 'INC-1', 'AMBER' as never, 'CTI Analyst', 'Acme', undefined, 'workbench')
+      .objects.find((o) => o.type === 'identity' && (o as { identity_class?: string }).identity_class === 'individual')) as
+      | { x_snr_origin?: string }
+      | undefined;
+
+  it('marks the analyst identity as analyst-authored when origin is workbench', () => {
+    expect(analyst()?.x_snr_origin).toBe('analyst-authored');
+  });
+
+  it('omits the provenance property for analysis-origin (default)', () => {
+    const id = buildStixBundle(bundleResult(), 'INC-1', 'AMBER' as never, 'CTI Analyst', 'Acme')
+      .objects.find((o) => o.type === 'identity' && (o as { identity_class?: string }).identity_class === 'individual') as
+      | { x_snr_origin?: string }
+      | undefined;
+    expect(id).toBeDefined();
+    expect(id?.x_snr_origin).toBeUndefined();
+  });
+});
 
 // Test the pure buildStixPattern logic (not exported, so we replicate it)
 describe('buildStixPattern', () => {

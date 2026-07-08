@@ -231,6 +231,7 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
   let email: AnalysisResult['email_content'];
   let brandTheme: Partial<EmailTheme>;
   let brandSender: Partial<EmailSender>;
+  let previewOrigin: 'workbench' | undefined;
 
   if (session_id) {
     if (!(await verifySessionTeam(req, res, session_id))) return;
@@ -252,6 +253,8 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
     const brand = await resolveBrandForSession(session_id, authReq.teamId);
     brandTheme = brand.theme;
     brandSender = brand.sender;
+    const originRow = (await db.prepare('SELECT origin FROM sessions WHERE id = ?').get(session_id)) as { origin?: string } | undefined;
+    previewOrigin = originRow?.origin === 'workbench' ? 'workbench' : undefined;
 
     // Real email content = AI output + saved analyst overrides + in-progress edits.
     let savedOverrides: Record<string, string> = {};
@@ -309,6 +312,7 @@ router.post('/email-studio-preview', async (req: Request, res: Response) => {
     analystName: m.analyst_name || '',
     theme: effectiveTheme,
     preheader: effectiveSender.preheader,
+    origin: previewOrigin,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -495,7 +499,8 @@ router.post('/export/stix', async (req: Request, res: Response) => {
   filterFalsePositiveIocs(result, row.analyst_overrides);
   const analystName = settings.analyst_name || authReq.user.displayName;
   const orgName = settings.org_name || 'Security Operations';
-  const bundle = buildStixBundle(result, session_id, tlp as 'AMBER', analystName, orgName, overrides);
+  const stixOriginRow = (await db.prepare('SELECT origin FROM sessions WHERE id = ?').get(session_id)) as { origin?: string } | undefined;
+  const bundle = buildStixBundle(result, session_id, tlp as 'AMBER', analystName, orgName, overrides, stixOriginRow?.origin === 'workbench' ? 'workbench' : undefined);
   const date = new Date().toISOString().split('T')[0];
   const filename = `SNR-STIX-${session_id.slice(0, 8)}-${date}.json`;
 
@@ -744,6 +749,7 @@ router.post('/export/eml', async (req: Request, res: Response) => {
 
   const emlSections = parseSections(settings.report_sections || '');
   const brand = await resolveBrandForSession(session_id, authReq.teamId);
+  const emlOriginRow = (await db.prepare('SELECT origin FROM sessions WHERE id = ?').get(session_id)) as { origin?: string } | undefined;
 
   const eml = buildEml({
     result,
@@ -768,6 +774,7 @@ router.post('/export/eml', async (req: Request, res: Response) => {
     orgName,
     theme: brand.theme,
     sender: brand.sender,
+    origin: emlOriginRow?.origin === 'workbench' ? 'workbench' : undefined,
   });
 
   const filename = `SNR-Brief-${audience}-${session_id.slice(0, 8)}-${date}.eml`;
@@ -879,6 +886,8 @@ router.post('/export/zip', async (req: Request, res: Response) => {
 
   const zipSections = parseSections(settings.report_sections || '');
   const zipBrand = await resolveBrandForSession(session_id, authReq.teamId);
+  const zipOriginRow = (await db.prepare('SELECT origin FROM sessions WHERE id = ?').get(session_id)) as { origin?: string } | undefined;
+  const zipOrigin = zipOriginRow?.origin === 'workbench' ? 'workbench' as const : undefined;
 
   const eml = buildEml({
     result,
@@ -903,6 +912,7 @@ router.post('/export/zip', async (req: Request, res: Response) => {
     orgName,
     theme: zipBrand.theme,
     sender: zipBrand.sender,
+    origin: zipOrigin,
   });
 
   res.setHeader('Content-Type', 'application/zip');

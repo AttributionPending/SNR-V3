@@ -18,4 +18,18 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy, independently-cacheable vendor libs out of the main bundle
+        // so the initial load ships less JS and these chunks cache across deploys.
+        manualChunks: {
+          'vendor-flow': ['reactflow', 'dagre'],
+          'vendor-editor': ['@tiptap/react', '@tiptap/starter-kit', 'tiptap-markdown'],
+          'vendor-pdf': ['jspdf'],
+          'vendor-markdown': ['react-markdown'],
+        },
+      },
+    },
+  },
 })

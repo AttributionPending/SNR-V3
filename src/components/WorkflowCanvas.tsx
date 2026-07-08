@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   ChevronLeft, Activity, AlertCircle, NotebookPen, Download, Package, Save,
@@ -10,13 +10,13 @@ import AttackChainView from './AttackChainView';
 import AttackFlowView from './AttackFlowView';
 import IOCTable from './IOCTable';
 import DetectionRulesTable from './DetectionRulesTable';
-import { exportPdf } from '../lib/pdf-export';
 import TechniqueDetail from './TechniqueDetail';
 import TagEditor from './TagEditor';
 import ThreatActorAssignDialog from './ThreatActorAssignDialog';
 import ConfirmDialog from './ConfirmDialog';
 import RichTextEditor from './RichTextEditor';
-import EmailStudio from './EmailStudio';
+// Large on-demand overlay — split into its own chunk.
+const EmailStudio = lazy(() => import('./EmailStudio'));
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -893,7 +893,12 @@ export default function WorkflowCanvas({
               variant="outline"
               className="text-xs h-8 gap-1.5"
               disabled={disabled}
-              onClick={() => { if (result) exportPdf(result, tlp, editedEmail ?? undefined, sections); }}
+              onClick={async () => {
+                if (!result) return;
+                // jsPDF is heavy — load it only when the analyst actually exports.
+                const { exportPdf } = await import('../lib/pdf-export');
+                exportPdf(result, tlp, editedEmail ?? undefined, sections);
+              }}
             >
               <Download className="w-3.5 h-3.5" />
               Download PDF
@@ -1059,17 +1064,19 @@ export default function WorkflowCanvas({
 
       {/* Full-screen Email Studio */}
       {emailStudioOpen && sessionId && result && editedEmail && (
-        <EmailStudio
-          open={emailStudioOpen}
-          onClose={() => setEmailStudioOpen(false)}
-          sessionId={sessionId}
-          result={result}
-          audience={audience}
-          tlp={tlp}
-          email={editedEmail}
-          onContentChange={setEmailField}
-          onShowToast={onShowToast}
-        />
+        <Suspense fallback={null}>
+          <EmailStudio
+            open={emailStudioOpen}
+            onClose={() => setEmailStudioOpen(false)}
+            sessionId={sessionId}
+            result={result}
+            audience={audience}
+            tlp={tlp}
+            email={editedEmail}
+            onContentChange={setEmailField}
+            onShowToast={onShowToast}
+          />
+        </Suspense>
       )}
     </main>
   );

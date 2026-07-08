@@ -29,19 +29,6 @@ const SEVERITY = ['Critical', 'High', 'Medium', 'Low', 'Informational'] as const
 const FLOW_NODE_TYPES: AttackFlowNode['type'][] = ['action', 'asset', 'tool', 'malware', 'operator_and', 'operator_or'];
 const FLOW_EDGE_LABELS = ['leads to', 'uses', 'targets', 'drops', 'requires', 'communicates with'];
 
-/** A blank result to seed a new authored report. */
-export function blankResult(): AnalysisResult {
-  return {
-    incident_summary: { title: '', severity: 'Medium', confidence: 'Medium', description: '', analyst_notes: '' },
-    attack_chain: [],
-    iocs: [],
-    detection_rules: [],
-    threat_actor: { name: null, aliases: [], motivation: null, attribution_confidence: null, intrusion_set: null, campaign_name: null, malware_families: [] },
-    affected_assets: [],
-    email_content: { subject: '', severity_badge: 'Medium' },
-  };
-}
-
 type Tab = 'summary' | 'attack' | 'iocs' | 'rules' | 'context' | 'flow' | 'narrative';
 
 interface Props {

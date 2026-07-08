@@ -28,6 +28,23 @@ describe('buildHtmlBody — escaping (security)', () => {
   });
 });
 
+describe('buildHtmlBody — provenance (workbench origin)', () => {
+  const opts = {
+    email: result().email_content, audienceLabel: 'SOC', tlp: 'AMBER' as const,
+    tlpColor: '#d97706', tlpTextColor: '#ffffff', severityColor: '#374151', severityBg: '#f9fafb',
+    result: result(), analystName: 'CTI Analyst',
+  };
+  it('renders an analyst-authored provenance note when origin is workbench', () => {
+    const html = buildHtmlBody({ ...opts, origin: 'workbench' });
+    expect(html).toContain('CTI Analyst');
+    expect(html.toLowerCase()).toContain('analyst-authored');
+  });
+  it('omits the provenance note for analysis-origin (default)', () => {
+    const html = buildHtmlBody(opts);
+    expect(html.toLowerCase()).not.toContain('analyst-authored');
+  });
+});
+
 describe('buildEml — sender identity headers', () => {
   it('applies From / Reply-To / CC / BCC and a token-substituted subject', () => {
     const eml = buildEml({

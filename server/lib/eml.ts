@@ -116,6 +116,8 @@ interface EmlOptions {
   theme?: Partial<EmailTheme>;
   /** Sender identity (From/Reply-To/CC/BCC/preheader/subject). */
   sender?: EmailSender;
+  /** 'workbench' adds an "Original research — analyst-authored" note. */
+  origin?: 'analysis' | 'workbench';
 }
 
 export function buildEml(opts: EmlOptions): string {
@@ -183,6 +185,7 @@ export function buildEml(opts: EmlOptions): string {
     analystName: opts.analystName,
     theme: opts.theme,
     preheader: sender?.preheader,
+    origin: opts.origin,
   });
 
   const plainText = buildPlainText({
@@ -338,6 +341,8 @@ export function buildHtmlBody(opts: {
   theme?: Partial<EmailTheme>;
   /** Inbox preview text (hidden in the body). */
   preheader?: string;
+  /** 'workbench' adds an "Original research — analyst-authored" note. */
+  origin?: 'analysis' | 'workbench';
 }): string {
   const { email, audienceLabel, tlp, tlpColor, severityColor, result } = opts;
   const sections = opts.sections ?? DEFAULT_SECTIONS;
@@ -567,6 +572,15 @@ export function buildHtmlBody(opts: {
     .join('');
 
   // ── Optional framing blocks ───────────────────────────────────────────────
+  const provenanceBlock = opts.origin === 'workbench' ? `
+          <table width="100%" border="0" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+            <tr>
+              <td style="border-left:4px solid ${esc(primaryColor)};padding:8px 14px;">
+                <p style="margin:0;color:#475569;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.5;">Original research &mdash; analyst-authored${opts.analystName ? ` by ${esc(opts.analystName)}` : ''}.</p>
+              </td>
+            </tr>
+          </table>` : '';
+
   const preambleBlock = opts.customPreamble?.trim() ? `
           <table width="100%" border="0" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
             <tr>
@@ -674,7 +688,7 @@ export function buildHtmlBody(opts: {
 
   const contentArea = opts.template?.trim()
     ? renderTemplatedContent(opts.template)
-    : [preambleBlock, audienceIntroBlock, sectionBlocks, signatureBlock].join('\n          ');
+    : [provenanceBlock, preambleBlock, audienceIntroBlock, sectionBlocks, signatureBlock].join('\n          ');
 
   const htmlOut = `<!DOCTYPE html>
 <html lang="${esc(T.lang)}">

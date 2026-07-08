@@ -59,4 +59,10 @@ describe('extractReferences', () => {
     const out = extractReferences('Reference: My Report\nhttps://example.com/x\nCVE-2024-9999');
     expect(out).toBe('My Report\nhttps://example.com/x\nCVE-2024-9999');
   });
+
+  it('does not repeat a URL/CVE already contained in a Reference: line', () => {
+    const out = extractReferences('Reference: https://blog.example/writeup and CVE-2024-1234');
+    expect(out).toBe('https://blog.example/writeup and CVE-2024-1234');
+    expect(out.split('\n')).toHaveLength(1);
+  });
 });

@@ -10,6 +10,20 @@ import type { AnalysisResult } from '@/types';
 
 type Technical = Omit<AnalysisResult, 'email_content'>;
 
+/** A blank result to seed a new authored report. (Kept here — a light module —
+ *  so App can create one without statically importing the heavy Workbench.) */
+export function blankResult(): AnalysisResult {
+  return {
+    incident_summary: { title: '', severity: 'Medium', confidence: 'Medium', description: '', analyst_notes: '' },
+    attack_chain: [],
+    iocs: [],
+    detection_rules: [],
+    threat_actor: { name: null, aliases: [], motivation: null, attribution_confidence: null, intrusion_set: null, campaign_name: null, malware_families: [] },
+    affected_assets: [],
+    email_content: { subject: '', severity_badge: 'Medium' },
+  };
+}
+
 export interface MergeCounts {
   techniques: number;
   iocs: number;
