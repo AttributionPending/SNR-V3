@@ -329,9 +329,13 @@ async function start() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-start().catch((err) => {
-  logger.fatal({ err }, 'Failed to start server');
-  process.exit(1);
-});
+// Auto-start unless imported for testing (SNR_SKIP_LISTEN=1 → supertest can drive
+// `app` without binding the port or booting the queue/schedulers).
+if (!process.env.SNR_SKIP_LISTEN) {
+  start().catch((err) => {
+    logger.fatal({ err }, 'Failed to start server');
+    process.exit(1);
+  });
+}
 
 export default app;
