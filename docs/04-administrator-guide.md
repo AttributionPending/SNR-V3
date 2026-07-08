@@ -60,14 +60,13 @@ Open **Settings** (gear icon). Sections:
 
 | Section | What it controls |
 |---|---|
-| **LLM Provider** | Choose Anthropic or an OpenAI-compatible endpoint. For OpenAI-compatible, set **API Base URL**, **API Key**, and **Model Name** (Ollama, LM Studio, vLLM, Azure OpenAI). |
+| **LLM Provider** | Choose Anthropic or an OpenAI-compatible endpoint. For **Anthropic**, pick the **Model** — Sonnet 4.6 (default), Sonnet 4.5, Haiku 4.5 (fastest — cuts analysis time ~3–4×), Opus 4.8, or a custom id; the key is read from `.env`. For **OpenAI-compatible**, set **API Base URL**, **API Key**, and **Model Name** (Ollama, LM Studio, vLLM, Azure OpenAI). |
 | **Analyst Identity** | **Analyst Name**, **Analyst Email**, **Organization Name**, and **Default TLP Level** — these populate export headers and report metadata. |
 | **AI Guidance** | **Organizational Context** (your environment, crown jewels, industry) and **Detection Stack** (your SIEM/EDR/firewall) — injected into every analysis. Detection-gap analysis only works when the Detection Stack is filled in. Be specific. |
 | **Brief Sections** | The blocks of the Phase 2 brief. Reorder (↑/↓), enable/disable, edit each section's Claude instructions, or **Add Section** (label, type, unique snake_case key, instructions). Types: `text`, `bullets`, `numbered`, and auto `techniques` / `iocs` (read-only, filled from Phase 1). |
 | **Audience Analysis Prompts** | Override each built-in audience's framing prompt, and **add custom audiences** (appear in the analysis dropdown). |
 | **Audience-Specific Preambles** | A fixed opening paragraph per audience (boilerplate disclaimers, mandatory headers). |
-| **Email Template** | The **body layout** of the email brief, edited as a token document: `{{SECTIONS}}` / `{{SECTION:key}}`, `{{TECHNIQUES_TABLE}}`, `{{IOCS_TABLE}}`, `{{PREAMBLE}}`, `{{AUDIENCE_INTRO}}`, `{{SIGNATURE}}`, plus inline `{field}` tokens. Empty = built-in default layout. Live preview included. |
-| **Email Branding** | The visual wrapper: **Email Header Title**, **Footer Text**, **Signature Block**, **Custom Preamble**, colors, logo, and font family/size. Live preview included. |
+| **Email Branding & Templates** | Email design now lives in **Email Studio** (open it from this card, or from a session's Email tab). It covers the body **layout** template (`{{BLOCK}}` / `{field}` tokens), the visual **branding** (header/subtitle, footer, signature, preamble, colors, logo, fonts), and reusable per-client **brand profiles** + sender identity. See §4.8. |
 | **CTI Report Template** | The Markdown report layout, using `{field}` and `{{BLOCK}}` tokens (`{{SECTIONS}}`, `{{ATTACK_TABLE}}`, `{{ATTACK_CHAIN}}`, `{{IOC_TABLE}}`, `{{EMAIL_IOCS}}`, `{{AFFECTED_ASSETS_TABLE}}`, `{{THREAT_ACTOR}}`, `{{CAMPAIGN_TIMELINE}}`). Empty = built-in structured report. |
 | **CC / BCC Lists per Audience** | Comma-separated recipient lists per audience, written into the exported `.eml`. |
 | **Prompt Engineering** | Advanced overrides: **System Prompt**, **Technical Extraction Instructions** (Phase 1), and **Stakeholder Brief Template** (Phase 2, supports `{audience}`, `{date}`, `{audience_guidance}`, `{section_guidance}`, `{technical_findings}`). |
@@ -96,8 +95,11 @@ Two admin-panel tabs and one settings section extend SNR into an enterprise stac
 
 - **Admin Panel → API Keys** — create service accounts and mint scoped API keys so
   other systems can submit/fetch analyses. See [7. Integration API](./07-integration-api.md).
-- **Admin Panel → Threat Feeds** — add TAXII/MISP/RSS sources that are polled on a
-  cadence and auto-analyzed. See [7.4 Threat-intel feeds](./07-integration-api.md#74-threat-intel-feeds).
+- **Admin Panel → Threat Feeds** — add TAXII/MISP/RSS sources. With the scheduler on
+  (`FEED_POLL_INTERVAL_SECONDS` > 0) they're polled on a cadence and auto-analyzed; with it
+  **off** (`= 0`, the default in the sample `.env`) feeds run **manual-only** — use each feed's
+  **Poll now** button (which also works while a feed is toggled off; toggling off only stops
+  *automatic* polling). See [7.4 Threat-intel feeds](./07-integration-api.md#74-threat-intel-feeds).
 - **Settings → Detection-as-Code** — publish a session's rules + report to GitHub as a
   pull request. See [8. Detection-as-Code](./08-detection-as-code.md).
 
@@ -107,6 +109,24 @@ Installation, Postgres, the background worker, TLS, scheduled `pg_dump` backups 
 restore, Prometheus `/metrics` (+ Grafana dashboard), secrets (`*_FILE`), scaling,
 and the hardening checklist live in the **[Deployment Guide](../DEPLOYMENT.md)**.
 Programmatic access is documented in the **[API Reference](../API.md)**.
+
+## 4.8 Email Studio & brand profiles (white-label)
+
+**Email Studio** (a session's Email tab, or Settings → Email Branding & Templates) is the single
+surface for email design — content, layout template, branding, and sender identity — with a live
+preview. SNR ships a **default theme** out of the box; no setup is required.
+
+**Brand profiles** let an MSSP/enterprise white-label CTI emails per client/tenant. A profile
+bundles a **theme** (colors, logo + alt/link/size, header title/subtitle, footer, fonts,
+"Generated by SNR" attribution toggle) and a **sender identity** (From / Reply-To / CC / BCC /
+preheader / subject template). They're **team-wide**, selectable per session, and one can be the
+team default.
+
+- **Governance:** any team member can *view* and select a profile for a session; **creating,
+  editing, deleting, and setting the default** require **admin or team-lead** role. Brand kits
+  export/import as JSON for sharing across teams.
+- **Resolution order** for a session's email: its selected profile → the team default profile →
+  the built-in SNR theme.
 
 ---
 

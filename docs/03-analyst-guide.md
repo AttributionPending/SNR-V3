@@ -92,12 +92,31 @@ From **Review & Export**:
 
 False-positive-flagged IOCs are excluded from every export.
 
+### Email Studio
+
+Design the stakeholder email in one place — a full-screen editor with the **rendered brief
+beside the controls**, opened from a session's **Email** tab (or from **Settings → Email
+Branding & Templates** before your first analysis). It consolidates what used to be split
+across settings:
+
+- **Content** — the subject and each brief section (rich text), per session.
+- **Layout** — the body-section template (`{{BLOCK}}` / `{field}` tokens), team-wide.
+- **Brand Kit** — reusable per-client **brand profiles** (colors, logo, header/subtitle,
+  footer, fonts) plus a **sender identity** (From / Reply-To / CC / BCC / preheader / subject
+  template), selectable per session. SNR ships a default theme out of the box; brand kits can be
+  imported/exported as JSON.
+- **Defaults / Sections** — the team-wide branding fallback and which sections appear.
+
+Edits save to the same team-wide settings the exports use, so the downloaded `.eml` matches the
+live preview.
+
 ## 3.5 Organize sessions, tags & threat actors
 
 **Sessions list** (sidebar): search by name, filter by severity / audience / tag, and
 enter **Select** mode for bulk actions. Rename via double-click or the right-click menu.
-**Deleting** a session is soft and shows an **Undo** toast; deleted sessions are
-recoverable for 7 days before purge.
+**Deleting** a session is soft and shows an **Undo** toast. After the toast, deleted sessions
+stay recoverable for **7 days** from **Activity & Reports → Recently Deleted → Restore**, then
+they're purged.
 
 **Tags:** add tags from a session's hover icon or right-click menu (with autocomplete
 from existing tags), or in bulk from Select mode. Filter the list by tag.
@@ -111,9 +130,33 @@ adversary records. You can:
 
 Analyses also auto-link to a detected actor (or an "Unattributed" placeholder) where attribution is possible.
 
-## 3.6 Insights & search
+## 3.6 Author your own report — Analyst Workbench
 
-- **Activity Log / Reports** (sidebar): an **Analytics** dashboard (sessions over time, severity/audience breakdowns, export activity, IOC and technique distributions), **Session history**, and the **Audit trail**.
+When you've done **original research** and there's no source article to analyze, author the
+report directly. From the sidebar click **Write report** (or open **Workbench** on any existing
+session to hand-edit it). The full-screen editor has a tab for every part of the result:
+
+- **Summary** — title, severity, confidence, description, analyst notes.
+- **ATT&CK** — add techniques with an autocomplete picker that fills the name + tactic from the
+  bundled MITRE dataset.
+- **IOCs**, **Detections** (author Sigma/YARA/Suricata), **Actor & Assets**.
+- **Flow** — build the Attack Flow causal graph: add nodes (action / asset / tool / malware /
+  AND-OR) and edges, with a live diagram. Action nodes reference your ATT&CK techniques; a flow
+  is kept on save only if it has **≥2 action nodes, ≥1 edge, and forms a DAG**.
+- **Narrative** — the email sections.
+
+**AI assist** (optional — you stay the author, nothing auto-saves):
+- **Draft with AI** — write the narrative from your structured findings.
+- **Suggest from notes** — paste a freeform write-up; the AI extracts techniques / IOCs / rules
+  and a flow to merge in.
+- **Generate detection rules** — Sigma/YARA/Suricata for your current techniques.
+
+**Save** stores a new result version; the session is tagged **Authored**, and every export works
+exactly as for an analyzed session (the CTI report notes "Original research — analyst-authored").
+
+## 3.7 Insights & search
+
+- **Activity Log / Reports** (sidebar): an **Analytics** dashboard (sessions over time, severity/audience breakdowns, export activity, IOC and technique distributions), **Session history**, **Recently Deleted**, and the **Audit trail**.
 - **Global search** (`Ctrl`/`⌘`+`K`): search across sessions, IOCs, techniques, threat actors, and assets; jump straight to a result.
 
 ---

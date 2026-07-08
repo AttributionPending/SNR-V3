@@ -41,6 +41,20 @@ is isolated per team. See [Roles & permissions](./04-administrator-guide.md#41-r
 No working LLM credential. Set `ANTHROPIC_API_KEY` (or `_FILE`), or configure an
 OpenAI-compatible provider in Settings → LLM Provider. Check `GET /api/health` → `llm`.
 
+**Login fails ("Failed to fetch") on `https://localhost` after the app sat idle.**
+Caddy's local self-signed cert can expire during long idle periods and only renews on the
+next request, so the browser silently blocks login. Reload the page (the cert renews) and try
+again. To prevent it on a long-lived local deployment, set `CADDY_TLS_SNIPPET=tls_local_long`
+in `.env` (extends the cert to ~1 year) — see [DEPLOYMENT.md](../DEPLOYMENT.md).
+
+**A panel shows empty ("No feeds/sessions") or "Failed to fetch" right after an update.**
+Usually a **stale cached bundle** in an open tab after a redeploy. Hard-refresh
+(`Ctrl`/`⌘`+`Shift`+`R`) to load the current build and re-authenticate — the data is intact.
+
+**AI-assist (Workbench "Draft/Suggest/Generate") takes ~a minute.**
+Each is a live LLM call, so expect up to ~60–75s with a spinner. It's rate-limited to 30/hour
+per IP; a `429` means you've hit that — wait and retry.
+
 ## Deployment & data
 
 **Browser warns the certificate isn't trusted.**
@@ -49,10 +63,10 @@ warning for local use, or use a real domain (auto Let's Encrypt) or your interna
 see [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 **Where is my data, and how do I back it up / restore it?**
-All data is in the SQLite database at `DB_PATH` (a mounted volume in containers).
-Scheduled consistent snapshots run automatically; manual backup/restore and the restore
-procedure are in [DEPLOYMENT.md](../DEPLOYMENT.md). Deleted sessions are recoverable for
-7 days (Undo toast) before purge.
+All data is in **Postgres** (a mounted volume in containers). Scheduled `pg_dump` snapshots
+run automatically; manual backup/restore and the restore procedure are in
+[DEPLOYMENT.md](../DEPLOYMENT.md). Deleted sessions are recoverable for 7 days — via the Undo
+toast, or **Activity & Reports → Recently Deleted → Restore** — before purge.
 
 **After `docker compose restart app`, the site 404s briefly.**
 The reverse proxy re-resolves the app shortly (within a few seconds). If you customized

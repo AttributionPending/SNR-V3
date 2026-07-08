@@ -22,20 +22,24 @@ or any OpenAI-compatible endpoint) and **self-hostable** on your own infrastruct
 
 **Analysis**
 - Two-phase LLM pipeline — technical extraction, then an audience-scoped brief (streamed live)
+- **Switchable Anthropic model** (Sonnet 4.6 default / Haiku 4.5 for speed / Opus 4.8) in Settings
 - **ATT&CK chain** and **MITRE Attack Flow** (causal DAG) visualizations
 - IOC extraction with validation/dedup; Sigma, YARA & Suricata detection rules
 - Threat-actor attribution
+
+**Author (Analyst Workbench)** — write **original-research** reports with no source article: a full editor for the summary, ATT&CK techniques (autocomplete picker), IOCs, detection rules, actor/assets, and a hand-built **Attack Flow** diagram — with optional AI assist (draft the narrative, suggest findings from freeform notes, generate detection rules). Every export works exactly as for an analyzed session.
 
 **Review & edit**
 - Per-session analyst overrides; rich-text editing of the brief
 - Severity / TLP control; IOC defang toggle + false-positive marking
 - **Re-analyze** an existing session (retry a failure, or regenerate for a different audience) with live progress
+- Soft-delete with **Undo** + a **Recently Deleted** restore view (7-day window)
 
 **Exports** — STIX 2.1 bundle, ATT&CK Navigator layer, **`.afb`** (Attack Flow Builder), email `.eml`, Markdown report, detection rules, IOC CSV, and a combined ZIP
 
 **Organize & report** — session tags + filters, threat-actor grouping/merge with aggregated TTPs/IOCs, an analytics dashboard, an append-only audit trail, and global search (`Ctrl+K`)
 
-**Customize** — email **layout** + **branding** editors, a CTI **report template** editor, configurable brief sections, and per-audience prompts (all in Settings)
+**Customize** — **Email Studio** (a live, full-screen email designer: content, layout template, branding, and per-client white-label **brand profiles** + sender identity, selectable per session), a CTI **report template** editor, configurable brief sections, and per-audience prompts
 
 **Integrate (V3)** — a machine-authenticated **Integration API** (`/api/v1`, API keys + scopes + per-key rate limits + webhooks), **threat-intel feed ingestion** (TAXII 2.1 / MISP / RSS, scheduled, auto-analyzed), and **detection-as-code** publishing (Sigma/YARA/Suricata + report to a GitHub PR)
 

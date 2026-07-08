@@ -85,14 +85,17 @@ guidance is in [DEPLOYMENT.md](../DEPLOYMENT.md). The most-used:
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` (or `_FILE`) | LLM credential (or configure an OpenAI-compatible provider). |
+| `CLAUDE_MODEL` | Default Anthropic model when none is picked in Settings → LLM Provider (which overrides it per-team). |
 | `A2N_ADMIN_EMAIL` / `A2N_ADMIN_PASSWORD` | First-run admin bootstrap. |
 | `JWT_SECRET` (or `_FILE`) | Auth signing secret — required in production. |
 | `ALLOWED_ORIGINS` | CORS origins — required in production. |
 | `PORT` / `HOST` | Listen port / bind address. |
-| `DB_PATH` | SQLite database path. |
+| `DATABASE_URL` | Postgres connection string (compose builds it from `POSTGRES_*`). |
+| `LLM_TIMEOUT` | LLM call timeout (seconds). Set on **both** the worker (analysis) and the app (Workbench AI-assist runs the LLM in the API process); compose defaults it to 300. |
+| `FEED_POLL_INTERVAL_SECONDS` | Threat-feed scheduler tick; `0` = manual-only (Poll now). |
+| `CADDY_TLS_SNIPPET` | `tls_local_long` extends the `localhost` self-signed cert to ~1yr; leave unset for a public `SNR_DOMAIN`. |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_RETENTION` | Scheduled backup cadence / retention. |
 | `METRICS_TOKEN` | Bearer token to protect `/metrics`. |
-| `LLM_TIMEOUT` | Per-phase LLM timeout (seconds). |
 
 ---
 
