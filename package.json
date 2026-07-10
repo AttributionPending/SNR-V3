@@ -21,6 +21,7 @@
     "db:restore": "tsx scripts/db-restore.ts",
     "migrate:sqlite": "tsx scripts/sqlite-to-postgres.ts",
     "check:actors": "tsx scripts/check-actors.ts",
+    "backfill:refang": "tsx scripts/backfill-refang-iocs.ts",
     "loadtest": "tsx scripts/loadtest.ts"
   },
   "dependencies": {
