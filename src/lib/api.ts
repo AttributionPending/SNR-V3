@@ -65,11 +65,24 @@ export async function fetchSessions(filters?: {
   }));
 }
 
-export async function fetchAllSessions(limit = 100, offset = 0): Promise<{ sessions: Session[]; total: number }> {
-  const res = await authFetch(`${BASE}/sessions?limit=${limit}&offset=${offset}`);
+export async function fetchAllSessions(
+  limit = 100,
+  offset = 0,
+  filters?: { search?: string; severity?: string; audience?: string; tags?: string },
+): Promise<{ sessions: Session[]; total: number }> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters?.search) params.set('search', filters.search);
+  if (filters?.severity) params.set('severity', filters.severity);
+  if (filters?.audience) params.set('audience', filters.audience);
+  if (filters?.tags) params.set('tags', filters.tags);
+  const res = await authFetch(`${BASE}/sessions?${params.toString()}`);
   if (!res.ok) throw new Error('Failed to load sessions');
-  const data = await res.json() as { sessions: Session[]; total: number };
-  return { sessions: data.sessions, total: data.total };
+  const data = await res.json() as { sessions: Array<Session & { tags?: string | string[] }>; total: number };
+  const sessions = data.sessions.map((s) => ({
+    ...s,
+    tags: typeof s.tags === 'string' ? JSON.parse(s.tags || '[]') : (s.tags ?? []),
+  })) as Session[];
+  return { sessions, total: data.total };
 }
 
 export interface AuditLogEntry {
