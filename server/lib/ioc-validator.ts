@@ -2,6 +2,7 @@
  * IOC validation and deduplication.
  * Validates format per type, flags warnings, and merges duplicates.
  */
+import { refang } from './defang.js';
 
 interface IOC {
   type: string;
@@ -151,12 +152,18 @@ const validators: Record<string, Validator> = {
  * Validate a single IOC and attach validation metadata.
  */
 function validateIOC(ioc: IOC): IOC {
-  const validator = validators[ioc.type];
+  // Canonicalize defanged network indicators (evil[.]com, hxxps://…, user[@]…)
+  // before validating so they aren't mis-flagged as invalid and aren't dropped
+  // from STIX/Navigator/CSV exports. The UI re-defangs for display.
+  const value = refang(ioc.value, ioc.type);
+  const canon = value === ioc.value ? ioc : { ...ioc, value };
+
+  const validator = validators[canon.type];
   if (!validator) {
-    return { ...ioc, validation: { valid: true, warnings: [`Unknown IOC type: ${ioc.type}`] } };
+    return { ...canon, validation: { valid: true, warnings: [`Unknown IOC type: ${canon.type}`] } };
   }
-  const result = validator(ioc.value);
-  return { ...ioc, validation: result };
+  const result = validator(canon.value);
+  return { ...canon, validation: result };
 }
 
 /** Confidence rank for merging — keep the highest. */

@@ -36,4 +36,36 @@ describe('validateAndDeduplicateIOCs', () => {
     const out = validateAndDeduplicateIOCs([ioc('ipv4', '45.32.113.172')]);
     expect(out[0].validation?.valid).toBe(true);
   });
+
+  it('refangs a defanged domain and marks it valid (canonical value stored)', () => {
+    const out = validateAndDeduplicateIOCs([ioc('domain', 'browseraccess4.pages[.]dev')]);
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBe('browseraccess4.pages.dev');
+    expect(out[0].validation?.valid).toBe(true);
+  });
+
+  it('refangs defanged urls, emails, and ipv4', () => {
+    const url = validateAndDeduplicateIOCs([ioc('url', 'hxxps://evil[.]com/gate[.]php')]);
+    expect(url[0].value).toBe('https://evil.com/gate.php');
+    expect(url[0].validation?.valid).toBe(true);
+
+    const email = validateAndDeduplicateIOCs([ioc('email', 'user[@]evil[.]com')]);
+    expect(email[0].value).toBe('user@evil.com');
+    expect(email[0].validation?.valid).toBe(true);
+
+    const ip = validateAndDeduplicateIOCs([ioc('ipv4', '45[.]32[.]113[.]172')]);
+    expect(ip[0].value).toBe('45.32.113.172');
+    expect(ip[0].validation?.valid).toBe(true);
+  });
+
+  it('merges a defanged and fanged form of the same indicator', () => {
+    const out = validateAndDeduplicateIOCs([ioc('domain', 'evil[.]com'), ioc('domain', 'evil.com')]);
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBe('evil.com');
+  });
+
+  it('does not refang non-network types (a filename keeping [.] literally)', () => {
+    const out = validateAndDeduplicateIOCs([ioc('filename', 'weird[.]name.exe')]);
+    expect(out[0].value).toBe('weird[.]name.exe');
+  });
 });
