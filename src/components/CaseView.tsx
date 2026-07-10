@@ -43,6 +43,7 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
   const [nameDraft, setNameDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUnlink, setConfirmUnlink] = useState<{ id: string; name: string } | null>(null);
   const [showLinkSearch, setShowLinkSearch] = useState(false);
   const [linkQuery, setLinkQuery] = useState('');
   const [available, setAvailable] = useState<Array<{ id: string; name: string; severity: string | null; created_at: number }>>([]);
@@ -230,7 +231,13 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
                   <span className="flex-1 truncate text-foreground group-hover:text-cyan-300">{s.name}</span>
                   <span className="text-[10px] text-muted-foreground/50">{formatTimestamp(s.created_at)}</span>
                 </button>
-                <button onClick={() => { void api.unlinkCaseSession(caseId, s.id).then(load).then(onCaseUpdated); }} className="text-muted-foreground/40 hover:text-red-400 p-1" title="Unlink"><Unlink className="w-3 h-3" /></button>
+                <button
+                  onClick={() => setConfirmUnlink({ id: s.id, name: s.name })}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-500/10 transition-colors flex-shrink-0"
+                  title="Remove this session from the case"
+                >
+                  <Unlink className="w-3 h-3" /> Remove
+                </button>
               </li>
             ))}
             {detail.sessions.length === 0 && <li className="text-xs text-muted-foreground">No sessions linked yet.</li>}
@@ -303,6 +310,13 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
         confirmLabel="Delete" danger
         onConfirm={() => { void api.deleteCase(caseId).then(onCaseDeleted); setConfirmDelete(false); }}
         onCancel={() => setConfirmDelete(false)}
+      />
+      <ConfirmDialog
+        open={!!confirmUnlink} title="Remove session from case?"
+        message={confirmUnlink ? `"${confirmUnlink.name}" will be removed from this case. The session itself is not deleted and can be re-added anytime.` : ''}
+        confirmLabel="Remove"
+        onConfirm={() => { const t = confirmUnlink; setConfirmUnlink(null); if (t) void api.unlinkCaseSession(caseId, t.id).then(load).then(onCaseUpdated); }}
+        onCancel={() => setConfirmUnlink(null)}
       />
     </main>
   );

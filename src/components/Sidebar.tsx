@@ -81,6 +81,9 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
     if (activeSessionId) setViewMode('sessions');
   }, [activeSessionId]);
 
+  // Footer "Cases" entry: switch the sidebar to the case list (expand first if collapsed).
+  const goToCases = () => { setViewMode('cases'); if (collapsed) onToggleCollapse(); };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [audienceFilter, setAudienceFilter] = useState('');
@@ -296,6 +299,14 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">Activity Log</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={goToCases} className={cn('w-7 h-7 rounded-md flex items-center justify-center transition-colors', viewMode === 'cases' ? 'text-cyan-400 bg-cyan-500/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50')} aria-label="Cases">
+              <Folder className="w-3.5 h-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Cases</TooltipContent>
         </Tooltip>
         {isAdmin && (
           <Tooltip>
@@ -554,19 +565,6 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
         >
           <Clock className="w-3 h-3" />
           Sessions
-        </button>
-        <button
-          onClick={() => setViewMode('cases')}
-          className={cn('flex-1 text-[10px] py-1 rounded transition-colors flex items-center justify-center gap-1',
-            viewMode === 'cases' ? 'bg-cyan-500/15 text-cyan-400 font-medium' : 'text-muted-foreground/60 hover:text-muted-foreground')}
-        >
-          <Folder className="w-3 h-3" />
-          Cases
-          {cases.length > 0 && (
-            <span className={cn('text-[9px] px-1 rounded-full', viewMode === 'cases' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-secondary text-muted-foreground/60')}>
-              {cases.length}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setViewMode('actors')}
@@ -1079,6 +1077,19 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
         >
           <BarChart2 className="w-3.5 h-3.5" />
           Activity Log
+        </button>
+        <button
+          onClick={goToCases}
+          className={cn('w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
+            viewMode === 'cases' ? 'text-cyan-400 bg-cyan-500/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50')}
+        >
+          <Folder className="w-3.5 h-3.5" />
+          Cases
+          {cases.length > 0 && (
+            <span className={cn('ml-auto text-[9px] px-1 rounded-full', viewMode === 'cases' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-secondary text-muted-foreground/60')}>
+              {cases.length}
+            </span>
+          )}
         </button>
         {isAdmin && (
           <button
