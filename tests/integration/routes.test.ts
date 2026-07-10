@@ -163,4 +163,76 @@ suite('sessions + brand-profiles routes', () => {
       await request(app).post(`/api/sessions/${b}/restore`).set(auth(adminToken));
     });
   });
+
+  describe('cases (investigations)', () => {
+    const withIoc = (title: string, ip: string, actor: string | null = null) => ({
+      ...minimalResult(title),
+      iocs: [{ type: 'ipv4', value: ip, context: 'beacon', confidence: 'High' }],
+      threat_actor: actor
+        ? { name: actor, aliases: [], motivation: null, attribution_confidence: 'High', malware_families: ['Cobalt Strike'] }
+        : { name: null, aliases: [], motivation: null, attribution_confidence: null, malware_families: [] },
+    });
+
+    it('creates a case, links sessions, aggregates, logs, graphs, and deletes without touching sessions', async () => {
+      const s1 = await newSession();
+      const s2 = await newSession();
+      await request(app).put(`/api/sessions/${s1}/result`).set(auth(adminToken)).send({ result: withIoc('C-A', '198.51.100.7', 'APT-Case') });
+      await request(app).put(`/api/sessions/${s2}/result`).set(auth(adminToken)).send({ result: withIoc('C-B', '198.51.100.7', 'APT-Case') });
+
+      // create + seed with s1
+      const created = await request(app).post('/api/cases').set(auth(adminToken)).send({ name: 'Op Testbed', sessionId: s1 });
+      expect(created.status).toBe(200);
+      const caseId = created.body.case.id as string;
+
+      // link s2
+      const link = await request(app).post(`/api/cases/${caseId}/sessions`).set(auth(adminToken)).send({ session_ids: [s2] });
+      expect(link.body.added).toBe(1);
+
+      // detail: 2 sessions, derived actor, aggregated IOC, and a 'created' + 'session_added' log
+      const detail = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(detail.body.case.session_count).toBe(2);
+      expect(detail.body.actors.some((a: { name: string }) => a.name === 'APT-Case')).toBe(true);
+      expect(detail.body.aggregated_iocs.some((i: { value: string; session_count: number }) => i.value === '198.51.100.7' && i.session_count === 2)).toBe(true);
+      expect(detail.body.log.length).toBeGreaterThanOrEqual(2);
+
+      // add a note + change status → log grows, status persists
+      await request(app).post(`/api/cases/${caseId}/log`).set(auth(adminToken)).send({ content: 'pivoting on the C2' });
+      const patched = await request(app).patch(`/api/cases/${caseId}`).set(auth(adminToken)).send({ status: 'monitoring' });
+      expect(patched.status).toBe(200);
+      const detail2 = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(detail2.body.case.status).toBe('monitoring');
+      expect(detail2.body.log.some((e: { entry_type: string }) => e.entry_type === 'status_change')).toBe(true);
+      expect(detail2.body.log.some((e: { content: string }) => e.content === 'pivoting on the C2')).toBe(true);
+
+      // graph: case + 2 sessions + actor + malware + shared ioc = 6 nodes
+      const graph = await request(app).get(`/api/cases/${caseId}/graph`).set(auth(adminToken));
+      expect(graph.status).toBe(200);
+      const types = graph.body.nodes.map((n: { type: string }) => n.type);
+      expect(types).toContain('case');
+      expect(types.filter((t: string) => t === 'session')).toHaveLength(2);
+      expect(types).toContain('actor');
+      expect(types).toContain('ioc');
+      expect(types).toContain('malware');
+
+      // neighborhood graph seeded by the actor
+      const actorId = detail2.body.actors.find((a: { name: string }) => a.name === 'APT-Case').id;
+      const nbr = await request(app).get('/api/graph').query({ seed: `actor:${actorId}` }).set(auth(adminToken));
+      expect(nbr.status).toBe(200);
+      expect(nbr.body.nodes.filter((n: { type: string }) => n.type === 'session').length).toBe(2);
+
+      // viewer cannot mutate
+      const vp = await request(app).patch(`/api/cases/${caseId}`).set(auth(viewerToken)).send({ status: 'closed' });
+      expect(vp.status).toBe(403);
+
+      // unlink one session
+      await request(app).delete(`/api/cases/${caseId}/sessions/${s2}`).set(auth(adminToken));
+      const detail3 = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(detail3.body.case.session_count).toBe(1);
+
+      // delete the case — sessions remain intact
+      expect((await request(app).delete(`/api/cases/${caseId}`).set(auth(adminToken))).status).toBe(200);
+      expect((await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken))).status).toBe(404);
+      expect((await request(app).get(`/api/sessions/${s1}`).set(auth(adminToken))).status).toBe(200);
+    });
+  });
 });

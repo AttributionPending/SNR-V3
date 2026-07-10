@@ -25,6 +25,8 @@ import analyticsRouter from './routes/analytics.js';
 import threatActorsRouter from './routes/threat-actors.js';
 import searchRouter from './routes/search.js';
 import iocsRouter from './routes/iocs.js';
+import casesRouter from './routes/cases.js';
+import graphRouter from './routes/graph.js';
 import keysRouter from './routes/keys.js';
 import v1Router from './routes/v1.js';
 import feedsRouter from './routes/feeds.js';
@@ -169,6 +171,8 @@ app.use('/api/analytics', requireAuth, requireTeamMember, analyticsRouter);
 app.use('/api/threat-actors', requireAuth, requireTeamMember, threatActorsRouter);
 app.use('/api/search', requireAuth, requireTeamMember, searchRouter);
 app.use('/api/iocs', requireAuth, requireTeamMember, iocsRouter);
+app.use('/api/cases', requireAuth, requireTeamMember, casesRouter);
+app.use('/api/graph', requireAuth, requireTeamMember, graphRouter);
 app.use('/api/brand-profiles', requireAuth, requireTeamMember, brandProfilesRouter);
 
 // ── Threat-intel feeds (JWT, team-scoped) ────────────────────────────────

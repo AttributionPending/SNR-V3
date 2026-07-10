@@ -157,6 +157,87 @@ export async function fetchIocOccurrences(type: string, value: string): Promise<
   return res.json() as Promise<IocOccurrences>;
 }
 
+// ── Cases (investigations) + link-analysis graph ─────────────────────────────
+
+export type CaseStatus = 'open' | 'monitoring' | 'closed';
+export type CasePriority = 'critical' | 'high' | 'medium' | 'low';
+
+export interface CaseSummary {
+  id: string; name: string; summary: string; status: CaseStatus; priority: CasePriority;
+  assignee: string | null; session_count: number; created_at: number; updated_at: number;
+}
+export interface CaseLinkedSession { id: string; name: string; severity: string | null; audience: string | null; created_at: number; added_at: number }
+export interface CaseAggTTP { technique_id: string; technique_name: string; tactic: string; session_count: number }
+export interface CaseAggIOC { type: string; value: string; norm: string; session_count: number; first_seen: number; last_seen: number; any_false_positive?: boolean }
+export interface CaseActor { id: string; name: string; session_count: number }
+export interface CaseLogEntry { id: string; user_id: string | null; author_name: string; entry_type: string; content: string; created_at: number }
+export interface CaseDetail {
+  case: CaseSummary;
+  sessions: CaseLinkedSession[];
+  aggregated_ttps: CaseAggTTP[];
+  aggregated_iocs: CaseAggIOC[];
+  actors: CaseActor[];
+  log: CaseLogEntry[];
+}
+
+export interface GraphNode { id: string; type: 'case' | 'session' | 'actor' | 'ioc' | 'malware'; label: string; meta?: Record<string, string | number | null> }
+export interface GraphData { nodes: GraphNode[]; edges: { source: string; target: string; label: string }[] }
+
+export async function fetchCases(search = ''): Promise<{ cases: CaseSummary[]; total: number }> {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  const res = await authFetch(`${BASE}/cases${qs}`);
+  if (!res.ok) throw new Error('Failed to load cases');
+  return res.json() as Promise<{ cases: CaseSummary[]; total: number }>;
+}
+export async function fetchCaseDetail(id: string): Promise<CaseDetail> {
+  const res = await authFetch(`${BASE}/cases/${id}`);
+  if (!res.ok) throw new Error('Failed to load case');
+  return res.json() as Promise<CaseDetail>;
+}
+export async function createCase(data: { name: string; summary?: string; priority?: CasePriority; sessionId?: string }): Promise<{ case: CaseSummary }> {
+  const res = await authFetch(`${BASE}/cases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to create case');
+  return res.json() as Promise<{ case: CaseSummary }>;
+}
+export async function updateCase(id: string, data: Partial<Pick<CaseSummary, 'name' | 'summary' | 'status' | 'priority' | 'assignee'>>): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!res.ok) throw new Error('Failed to update case');
+}
+export async function deleteCase(id: string): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete case');
+}
+export async function addCaseLog(id: string, content: string): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}/log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+  if (!res.ok) throw new Error('Failed to add log entry');
+}
+export async function linkCaseSessions(id: string, sessionIds: string[]): Promise<{ added: number }> {
+  const res = await authFetch(`${BASE}/cases/${id}/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_ids: sessionIds }) });
+  if (!res.ok) throw new Error('Failed to link sessions');
+  return res.json() as Promise<{ added: number }>;
+}
+export async function unlinkCaseSession(id: string, sessionId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}/sessions/${sessionId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to unlink session');
+}
+export async function fetchCaseAvailableSessions(id: string, search = ''): Promise<Array<{ id: string; name: string; severity: string | null; audience: string | null; created_at: number }>> {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  const res = await authFetch(`${BASE}/cases/${id}/sessions/available${qs}`);
+  if (!res.ok) throw new Error('Failed to load available sessions');
+  const data = await res.json() as { sessions: Array<{ id: string; name: string; severity: string | null; audience: string | null; created_at: number }> };
+  return data.sessions;
+}
+export async function fetchCaseGraph(id: string): Promise<GraphData> {
+  const res = await authFetch(`${BASE}/cases/${id}/graph`);
+  if (!res.ok) throw new Error('Failed to load case graph');
+  return res.json() as Promise<GraphData>;
+}
+export async function fetchGraph(seed: string): Promise<GraphData> {
+  const res = await authFetch(`${BASE}/graph?seed=${encodeURIComponent(seed)}`);
+  if (!res.ok) throw new Error('Failed to load graph');
+  return res.json() as Promise<GraphData>;
+}
+
 export async function fetchAuditLog(): Promise<AuditLogEntry[]> {
   const res = await authFetch(`${BASE}/sessions/audit/log`);
   if (!res.ok) throw new Error('Failed to load audit log');

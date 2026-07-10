@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   ChevronLeft, Activity, AlertCircle, NotebookPen, Download, Package, Save,
   Mail, Map, Shield, Pencil, Eye, RotateCcw, ChevronDown, ChevronUp, FileText,
-  Maximize2, X, PenLine, Crosshair,
+  Maximize2, X, PenLine, Crosshair, FolderPlus,
 } from 'lucide-react';
 import InputPanel from './InputPanel';
 import AttackChainView from './AttackChainView';
@@ -14,6 +14,7 @@ import TechniqueDetail from './TechniqueDetail';
 import TagEditor from './TagEditor';
 import ThreatActorAssignDialog from './ThreatActorAssignDialog';
 import IOCPivot from './IOCPivot';
+import AddToCaseDialog from './AddToCaseDialog';
 import ConfirmDialog from './ConfirmDialog';
 import RichTextEditor from './RichTextEditor';
 // Large on-demand overlay — split into its own chunk.
@@ -88,6 +89,8 @@ interface Props {
   onOpenWorkbench?: () => void;
   /** Navigate to another session (used by the IOC correlation pivot). */
   onSelectSession?: (id: string) => void;
+  /** Refresh the case list after adding this session to a case. */
+  onCasesChanged?: () => void;
 }
 
 // ── WorkflowCanvas ────────────────────────────────────────────────────────────
@@ -100,8 +103,9 @@ export default function WorkflowCanvas({
   captureAttackChain, customAudiences = [], onResultUpdate, onSaveComplete,
   sessionTags = [], allTags = [], onUpdateTags,
   linkedThreatActor, threatActors = [], onActorAssigned,
-  sessionStatus, onReanalyze, analystOverrides = {}, onOpenWorkbench, onSelectSession,
+  sessionStatus, onReanalyze, analystOverrides = {}, onOpenWorkbench, onSelectSession, onCasesChanged,
 }: Props) {
+  const [showAddToCase, setShowAddToCase] = useState(false);
   // ── Workflow step ────────────────────────────────────────────────────────
   const [step, setStep] = useState<'input' | 'results'>('input');
 
@@ -485,6 +489,12 @@ export default function WorkflowCanvas({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {sessionId && result && (
+              <Button variant="outline" size="sm" className="text-[11px] h-6 gap-1 px-2" onClick={() => setShowAddToCase(true)} title="Add this session to a case">
+                <FolderPlus className="w-3 h-3" />
+                Add to case
+              </Button>
+            )}
             {result && (
               <div className="flex items-center gap-1">
                 <Select value={effectiveSeverity} onValueChange={handleSeverityChange}>
@@ -1110,6 +1120,17 @@ export default function WorkflowCanvas({
           value={pivotIoc.value}
           onSelectSession={onSelectSession}
           onClose={() => setPivotIoc(null)}
+        />
+      )}
+
+      {/* Add-to-case */}
+      {showAddToCase && sessionId && (
+        <AddToCaseDialog
+          open={showAddToCase}
+          sessionId={sessionId}
+          onClose={() => setShowAddToCase(false)}
+          onShowToast={onShowToast}
+          onChanged={onCasesChanged}
         />
       )}
 

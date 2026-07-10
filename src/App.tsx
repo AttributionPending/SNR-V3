@@ -18,6 +18,7 @@ import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { cn } from './lib/utils';
 import ThreatActorView from './components/ThreatActorView';
+import CaseView from './components/CaseView';
 import SearchPalette from './components/SearchPalette';
 import type { AnalysisResult, AudienceType, Session, CustomAudience, ThreatActorSummary } from './types';
 import * as api from './lib/api';
@@ -111,6 +112,10 @@ function AppMain() {
   const [threatActors, setThreatActors] = useState<ThreatActorSummary[]>([]);
   const [activeThreatActorId, setActiveThreatActorId] = useState<string | null>(null);
 
+  // Cases (investigations)
+  const [cases, setCases] = useState<api.CaseSummary[]>([]);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+
   // Global search palette
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
 
@@ -202,12 +207,22 @@ function AppMain() {
     }
   }, []);
 
+  const loadCases = useCallback(async () => {
+    try {
+      const data = await api.fetchCases();
+      setCases(data.cases);
+    } catch {
+      // Non-critical — cases are an optional grouping feature
+    }
+  }, []);
+
   useEffect(() => {
     loadSessions();
     loadCustomAudiences();
     loadThreatActors();
     loadAllTags();
-  }, [loadSessions, loadCustomAudiences, loadThreatActors, loadAllTags]);
+    loadCases();
+  }, [loadSessions, loadCustomAudiences, loadThreatActors, loadAllTags, loadCases]);
 
   // Keep ref in sync for debounce callback
   useEffect(() => {
@@ -252,6 +267,7 @@ function AppMain() {
   const handleSelectSession = async (id: string) => {
     setActiveSessionId(id);
     setActiveThreatActorId(null);
+    setActiveCaseId(null);
     setError(null);
     setAnalystNote('');
     setSessionTags([]);
@@ -566,6 +582,7 @@ function AppMain() {
 
   const handleSelectThreatActor = useCallback((id: string) => {
     setActiveThreatActorId(id);
+    setActiveCaseId(null);
     setActiveSessionId(null);
     setResult(null);
     setStreamChunks('');
@@ -573,6 +590,29 @@ function AppMain() {
     setError(null);
     setAnalystNote('');
   }, []);
+
+  const handleSelectCase = useCallback((id: string) => {
+    setActiveCaseId(id);
+    setActiveThreatActorId(null);
+    setActiveSessionId(null);
+    setResult(null);
+    setStreamChunks('');
+    setStatusMessage('');
+    setError(null);
+    setAnalystNote('');
+  }, []);
+
+  const handleNewCase = useCallback(async () => {
+    const name = window.prompt('New case name:')?.trim();
+    if (!name) return;
+    try {
+      const { case: created } = await api.createCase({ name });
+      await loadCases();
+      handleSelectCase(created.id);
+    } catch {
+      showToast('Failed to create case', 'error');
+    }
+  }, [loadCases, handleSelectCase]);
 
   // ── Cmd/Ctrl+K global search (works even inside inputs) ─────────────────
   useEffect(() => {
@@ -639,11 +679,24 @@ function AppMain() {
           activeThreatActorId={activeThreatActorId}
           onSelectThreatActor={handleSelectThreatActor}
           onClearThreatActor={() => setActiveThreatActorId(null)}
+          cases={cases}
+          activeCaseId={activeCaseId}
+          onSelectCase={handleSelectCase}
+          onClearCase={() => setActiveCaseId(null)}
+          onNewCase={handleNewCase}
           onOpenSearch={() => setSearchPaletteOpen(true)}
           onActorAssigned={handleActorAssigned}
         />
 
-        {activeThreatActorId ? (
+        {activeCaseId ? (
+          <CaseView
+            caseId={activeCaseId}
+            onSelectSession={handleSelectSession}
+            onSelectThreatActor={handleSelectThreatActor}
+            onCaseDeleted={() => { setActiveCaseId(null); loadCases(); }}
+            onCaseUpdated={loadCases}
+          />
+        ) : activeThreatActorId ? (
           <ThreatActorView
             actorId={activeThreatActorId}
             onSelectSession={handleSelectSession}
@@ -685,6 +738,7 @@ function AppMain() {
             analystOverrides={analystOverrides}
             onOpenWorkbench={handleOpenWorkbench}
             onSelectSession={handleSelectSession}
+            onCasesChanged={loadCases}
           />
         )}
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square, PenLine } from 'lucide-react'
+import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square, PenLine, Folder } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import ThreatActorAssignDialog from './ThreatActorAssignDialog'
 import ConfirmDialog from './ConfirmDialog'
 import type { Session, ThreatActorSummary } from '@/types'
+import type { CaseSummary } from '@/lib/api'
 
 function WaveformIcon({ className }: { className?: string }) {
   return (
@@ -51,6 +52,11 @@ interface SidebarProps {
   onClearThreatActor: () => void;
   onOpenSearch?: () => void;
   onActorAssigned?: () => void;
+  cases: CaseSummary[];
+  activeCaseId: string | null;
+  onSelectCase: (id: string) => void;
+  onClearCase: () => void;
+  onNewCase: () => void;
 }
 
 const severityVariant = (s: string | null): 'critical' | 'high' | 'medium' | 'low' | 'info' | 'secondary' => {
@@ -60,14 +66,17 @@ const severityVariant = (s: string | null): 'critical' | 'high' | 'medium' | 'lo
   return map[s ?? ''] ?? 'secondary';
 };
 
-export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onWriteReport, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onActorAssigned }: SidebarProps) {
+export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onWriteReport, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onActorAssigned, cases, activeCaseId, onSelectCase, onClearCase, onNewCase }: SidebarProps) {
   const { user, teams, activeTeamId, switchTeam, logout, isAdmin } = useAuth();
-  const [viewMode, setViewMode] = useState<'sessions' | 'actors'>('sessions');
+  const [viewMode, setViewMode] = useState<'sessions' | 'cases' | 'actors'>('sessions');
 
   // Sync viewMode when parent changes active selection
   useEffect(() => {
     if (activeThreatActorId) setViewMode('actors');
   }, [activeThreatActorId]);
+  useEffect(() => {
+    if (activeCaseId) setViewMode('cases');
+  }, [activeCaseId]);
   useEffect(() => {
     if (activeSessionId) setViewMode('sessions');
   }, [activeSessionId]);
@@ -539,12 +548,25 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
       {/* View mode toggle */}
       <div className="px-3 py-1.5 border-b border-border flex gap-1">
         <button
-          onClick={() => { setViewMode('sessions'); onClearThreatActor(); }}
+          onClick={() => { setViewMode('sessions'); onClearThreatActor(); onClearCase(); }}
           className={cn('flex-1 text-[10px] py-1 rounded transition-colors flex items-center justify-center gap-1',
             viewMode === 'sessions' ? 'bg-cyan-500/15 text-cyan-400 font-medium' : 'text-muted-foreground/60 hover:text-muted-foreground')}
         >
           <Clock className="w-3 h-3" />
           Sessions
+        </button>
+        <button
+          onClick={() => setViewMode('cases')}
+          className={cn('flex-1 text-[10px] py-1 rounded transition-colors flex items-center justify-center gap-1',
+            viewMode === 'cases' ? 'bg-cyan-500/15 text-cyan-400 font-medium' : 'text-muted-foreground/60 hover:text-muted-foreground')}
+        >
+          <Folder className="w-3 h-3" />
+          Cases
+          {cases.length > 0 && (
+            <span className={cn('text-[9px] px-1 rounded-full', viewMode === 'cases' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-secondary text-muted-foreground/60')}>
+              {cases.length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setViewMode('actors')}
@@ -880,6 +902,62 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
           </div>
         );
       })()}
+
+      {/* Cases list */}
+      {viewMode === 'cases' && (
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-3 py-2">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Folder className="w-3 h-3" />
+              Cases ({cases.length})
+            </div>
+            <button
+              onClick={onNewCase}
+              className="flex items-center gap-0.5 text-[10px] text-cyan-400/60 hover:text-cyan-400 transition-colors"
+              title="Create new case"
+            >
+              <Plus className="w-3 h-3" />
+              New
+            </button>
+          </div>
+
+          {cases.length === 0 && (
+            <div className="text-xs text-muted-foreground text-center py-8">
+              No cases yet.
+              <br />Group related sessions into an investigation.
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {cases.map((c) => {
+              const statusColor = c.status === 'open' ? 'bg-emerald-400' : c.status === 'monitoring' ? 'bg-yellow-400' : 'bg-muted-foreground/50';
+              const prioColor = c.priority === 'critical' ? 'text-red-400' : c.priority === 'high' ? 'text-orange-400' : c.priority === 'medium' ? 'text-yellow-400' : 'text-emerald-400';
+              return (
+              <button
+                key={c.id}
+                onClick={() => onSelectCase(c.id)}
+                className={cn(
+                  'w-full text-left rounded-md transition-colors border px-2.5 py-2.5',
+                  activeCaseId === c.id ? 'bg-violet-500/10 border-violet-500/25' : 'hover:bg-secondary/50 border-transparent',
+                )}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusColor)} title={c.status} />
+                  <span className={cn('text-xs font-medium truncate flex-1', activeCaseId === c.id ? 'text-violet-200' : 'text-foreground')}>{c.name}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground/60">
+                  <span className={prioColor}>{c.priority}</span>
+                  <span>·</span>
+                  <span>{c.session_count} session{c.session_count !== 1 ? 's' : ''}</span>
+                </div>
+              </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* Threat Actors list */}
       {viewMode === 'actors' && (
