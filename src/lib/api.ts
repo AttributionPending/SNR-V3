@@ -113,6 +113,50 @@ export async function fetchAnalytics(days: number): Promise<AnalyticsData> {
   return res.json() as Promise<AnalyticsData>;
 }
 
+// ── Cross-session IOC correlation ────────────────────────────────────────────
+
+export interface IocActorHint { id: string; name: string; shared: number }
+export interface IocCorrelations {
+  correlations: Record<string, { others: number; actors: IocActorHint[] }>;
+  suggestedActors: { id: string; name: string; indicators: number }[];
+}
+
+/** Per-IOC "seen in N other incidents" data + actor suggestions for a session. */
+export async function fetchIocCorrelations(sessionId: string): Promise<IocCorrelations> {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/ioc-correlations`);
+  if (!res.ok) throw new Error('Failed to load IOC correlations');
+  return res.json() as Promise<IocCorrelations>;
+}
+
+export interface IocIndicator { type: string; value: string; norm: string; sessionCount: number; lastSeen: number }
+
+/** Browse distinct indicators across the team with incident counts. */
+export async function listIocs(q = '', type = '', limit = 50): Promise<IocIndicator[]> {
+  const qs = new URLSearchParams();
+  if (q) qs.set('q', q);
+  if (type) qs.set('type', type);
+  qs.set('limit', String(limit));
+  const res = await authFetch(`${BASE}/iocs?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load indicators');
+  const data = await res.json() as { indicators: IocIndicator[] };
+  return data.indicators;
+}
+
+export interface IocOccurrences {
+  type: string;
+  value: string;
+  sessions: { id: string; name: string; severity: string | null; createdAt: number }[];
+  actors: { id: string; name: string }[];
+}
+
+/** Every incident (and attributed actor) sharing one indicator. */
+export async function fetchIocOccurrences(type: string, value: string): Promise<IocOccurrences> {
+  const qs = new URLSearchParams({ type, value });
+  const res = await authFetch(`${BASE}/iocs/occurrences?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load indicator occurrences');
+  return res.json() as Promise<IocOccurrences>;
+}
+
 export async function fetchAuditLog(): Promise<AuditLogEntry[]> {
   const res = await authFetch(`${BASE}/sessions/audit/log`);
   if (!res.ok) throw new Error('Failed to load audit log');

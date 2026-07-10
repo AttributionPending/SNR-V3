@@ -6,6 +6,7 @@ import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
+import { reindexSessionIocs, parseFalsePositiveKeys, iocIndexKey } from '../lib/ioc-index.js';
 import { extractReferences } from '../lib/references.js';
 import { generateBrief, extractTechnical, generateDetectionRules, type AnalysisResult } from '../lib/claude.js';
 import { parseSections } from '../lib/sections.js';
@@ -371,6 +372,21 @@ router.patch('/:id/overrides', async (req: Request, res: Response) => {
       .run(overrides.severity_badge, Date.now(), req.params.id);
   }
 
+  // Re-sync the false-positive flag on the IOC index so correlations/actor
+  // suggestions exclude analyst-flagged FPs. Best-effort (failure-safe).
+  try {
+    const fpKeys = new Set(parseFalsePositiveKeys(JSON.stringify(overrides)).map((k) => k.toLowerCase()));
+    const rows = (await db.prepare('SELECT id, ioc_type, ioc_value FROM ioc_observations WHERE session_id = ?').all(req.params.id)) as Array<{ id: string; ioc_type: string; ioc_value: string }>;
+    for (const r of rows) {
+      const plainKey = `${r.ioc_type}::${r.ioc_value.trim().toLowerCase()}`;
+      const normKey = iocIndexKey(r.ioc_type, r.ioc_value);
+      const isFp = fpKeys.has(plainKey) || fpKeys.has(normKey.toLowerCase());
+      await db.prepare('UPDATE ioc_observations SET is_false_positive = ? WHERE id = ?').run(isFp ? 1 : 0, r.id);
+    }
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'IOC false-positive re-sync failed (non-fatal)');
+  }
+
   appendAuditLog({
     analyst_name: authReq.user.displayName,
     user_id: authReq.user.id,
@@ -380,6 +396,88 @@ router.patch('/:id/overrides', async (req: Request, res: Response) => {
   });
 
   res.json({ ok: true });
+});
+
+// GET /api/sessions/:id/ioc-correlations — for each of this session's indicators,
+// how many OTHER incidents share it and which threat actors those incidents are
+// attributed to. Drives the IOC-table "seen in N" chip and the actor-suggestion
+// banner. Keyed by the UI's iocKey (`type::lower(trim(value))`). FP-flagged
+// observations are excluded so noise doesn't drive false attribution.
+router.get('/:id/ioc-correlations', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const session = await fetchSessionWithTeamCheck(req, res);
+  if (!session) return;
+  const db = getDb();
+  const teamId = (session.team_id as string) || authReq.teamId;
+  const sid = req.params.id;
+
+  // This session's own indicators (type, display value, normalized key).
+  const mine = (await db.prepare(
+    'SELECT DISTINCT ioc_type, ioc_value, ioc_value_norm FROM ioc_observations WHERE session_id = ?'
+  ).all(sid)) as Array<{ ioc_type: string; ioc_value: string; ioc_value_norm: string }>;
+
+  if (mine.length === 0) {
+    res.json({ correlations: {}, suggestedActors: [] });
+    return;
+  }
+
+  // Other incidents (same team, live, complete, non-FP) sharing each (type, norm),
+  // with the actors they're attributed to. One pass; aggregated in JS.
+  const shared = (await db.prepare(`
+    SELECT o.ioc_type, o.ioc_value_norm,
+           o.session_id AS other_session,
+           ta.id AS actor_id, ta.name AS actor_name
+    FROM ioc_observations o
+    JOIN ioc_observations me
+      ON me.session_id = ? AND me.ioc_type = o.ioc_type AND me.ioc_value_norm = o.ioc_value_norm
+    JOIN sessions s ON s.id = o.session_id AND s.deleted_at IS NULL AND s.status = 'complete'
+    LEFT JOIN session_threat_actors sta ON sta.session_id = o.session_id
+    LEFT JOIN threat_actors ta ON ta.id = sta.threat_actor_id AND ta.name <> 'Unattributed'
+    WHERE o.team_id = ? AND o.session_id <> ? AND o.is_false_positive = 0
+  `).all(sid, teamId, sid)) as Array<{
+    ioc_type: string; ioc_value_norm: string; other_session: string;
+    actor_id: string | null; actor_name: string | null;
+  }>;
+
+  // Aggregate: per (type, norm) → distinct other sessions + actor tallies.
+  type Agg = { others: Set<string>; actors: Map<string, { name: string; sessions: Set<string> }> };
+  const byNorm = new Map<string, Agg>();
+  for (const row of shared) {
+    const nk = `${row.ioc_type}::${row.ioc_value_norm}`;
+    let agg = byNorm.get(nk);
+    if (!agg) { agg = { others: new Set(), actors: new Map() }; byNorm.set(nk, agg); }
+    agg.others.add(row.other_session);
+    if (row.actor_id && row.actor_name) {
+      let a = agg.actors.get(row.actor_id);
+      if (!a) { a = { name: row.actor_name, sessions: new Set() }; agg.actors.set(row.actor_id, a); }
+      a.sessions.add(row.other_session);
+    }
+  }
+
+  // Build the per-IOC map keyed by the UI iocKey, plus a session-level actor roll-up.
+  const correlations: Record<string, { others: number; actors: { id: string; name: string; shared: number }[] }> = {};
+  const actorTally = new Map<string, { name: string; indicators: Set<string> }>();
+  for (const m of mine) {
+    const nk = `${m.ioc_type}::${m.ioc_value_norm}`;
+    const agg = byNorm.get(nk);
+    if (!agg || agg.others.size === 0) continue;
+    const uiKey = `${m.ioc_type}::${m.ioc_value.trim().toLowerCase()}`;
+    const actors = [...agg.actors.entries()]
+      .map(([id, a]) => ({ id, name: a.name, shared: a.sessions.size }))
+      .sort((x, y) => y.shared - x.shared);
+    correlations[uiKey] = { others: agg.others.size, actors };
+    for (const a of actors) {
+      let t = actorTally.get(a.id);
+      if (!t) { t = { name: a.name, indicators: new Set() }; actorTally.set(a.id, t); }
+      t.indicators.add(nk);
+    }
+  }
+
+  const suggestedActors = [...actorTally.entries()]
+    .map(([id, t]) => ({ id, name: t.name, indicators: t.indicators.size }))
+    .sort((x, y) => y.indicators - x.indicators);
+
+  res.json({ correlations, suggestedActors });
 });
 
 // PUT /api/sessions/:id/result — save an analyst-authored AnalysisResult (Workbench).
@@ -455,6 +553,14 @@ router.put('/:id/result', async (req: Request, res: Response) => {
     await autoLinkThreatActor(db, req.params.id, result, (session.team_id as string) || authReq.teamId, authReq.user.id);
   } catch (err) {
     logger.warn({ err, session_id: req.params.id }, 'Threat actor auto-link failed (non-fatal)');
+  }
+
+  // Rebuild the cross-session IOC index (additive, failure-safe). A newly authored
+  // version has no false-positive overrides yet; they re-sync on the overrides PATCH.
+  try {
+    await reindexSessionIocs(db, req.params.id, (session.team_id as string) || authReq.teamId, result, []);
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'IOC reindex failed (non-fatal)');
   }
 
   appendAuditLog({

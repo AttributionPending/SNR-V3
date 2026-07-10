@@ -684,6 +684,7 @@ function AppMain() {
             onReanalyze={handleReanalyze}
             analystOverrides={analystOverrides}
             onOpenWorkbench={handleOpenWorkbench}
+            onSelectSession={handleSelectSession}
           />
         )}
 

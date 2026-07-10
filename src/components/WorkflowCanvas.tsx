@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   ChevronLeft, Activity, AlertCircle, NotebookPen, Download, Package, Save,
   Mail, Map, Shield, Pencil, Eye, RotateCcw, ChevronDown, ChevronUp, FileText,
-  Maximize2, X, PenLine,
+  Maximize2, X, PenLine, Crosshair,
 } from 'lucide-react';
 import InputPanel from './InputPanel';
 import AttackChainView from './AttackChainView';
@@ -13,6 +13,7 @@ import DetectionRulesTable from './DetectionRulesTable';
 import TechniqueDetail from './TechniqueDetail';
 import TagEditor from './TagEditor';
 import ThreatActorAssignDialog from './ThreatActorAssignDialog';
+import IOCPivot from './IOCPivot';
 import ConfirmDialog from './ConfirmDialog';
 import RichTextEditor from './RichTextEditor';
 // Large on-demand overlay — split into its own chunk.
@@ -85,6 +86,8 @@ interface Props {
   onReanalyze?: (audienceOverride?: string) => void;
   analystOverrides?: Record<string, string>;
   onOpenWorkbench?: () => void;
+  /** Navigate to another session (used by the IOC correlation pivot). */
+  onSelectSession?: (id: string) => void;
 }
 
 // ── WorkflowCanvas ────────────────────────────────────────────────────────────
@@ -97,7 +100,7 @@ export default function WorkflowCanvas({
   captureAttackChain, customAudiences = [], onResultUpdate, onSaveComplete,
   sessionTags = [], allTags = [], onUpdateTags,
   linkedThreatActor, threatActors = [], onActorAssigned,
-  sessionStatus, onReanalyze, analystOverrides = {}, onOpenWorkbench,
+  sessionStatus, onReanalyze, analystOverrides = {}, onOpenWorkbench, onSelectSession,
 }: Props) {
   // ── Workflow step ────────────────────────────────────────────────────────
   const [step, setStep] = useState<'input' | 'results'>('input');
@@ -156,6 +159,30 @@ export default function WorkflowCanvas({
   // never wipe other saved keys (the server replaces the whole overrides object).
   const [iocFalsePositives, setIocFalsePositives] = useState<string[]>([]);
   const savedOverridesRef = useRef<Record<string, string>>({});
+
+  // Cross-session IOC correlation: per-IOC "seen in N" data + actor suggestions.
+  const [iocCorrelations, setIocCorrelations] = useState<api.IocCorrelations | null>(null);
+  const [pivotIoc, setPivotIoc] = useState<{ type: string; value: string } | null>(null);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+
+  useEffect(() => {
+    setSuggestionDismissed(false);
+    if (!sessionId || !result || (result.iocs?.length ?? 0) === 0) {
+      setIocCorrelations(null);
+      return;
+    }
+    let alive = true;
+    api.fetchIocCorrelations(sessionId)
+      .then((d) => { if (alive) setIocCorrelations(d); })
+      .catch(() => { if (alive) setIocCorrelations(null); });
+    return () => { alive = false; };
+  }, [sessionId, result]);
+
+  // Suggest an actor only when the session isn't already attributed and the
+  // correlation surfaced one. Analyst confirms — we never auto-attribute.
+  const actorSuggestion = (!linkedThreatActor || linkedThreatActor.name === 'Unattributed')
+    ? iocCorrelations?.suggestedActors?.[0] ?? null
+    : null;
 
   useEffect(() => {
     savedOverridesRef.current = { ...analystOverrides };
@@ -424,6 +451,28 @@ export default function WorkflowCanvas({
                 ⚠ Suspected: {result.threat_actor.name}
               </div>
             ) : null}
+            {actorSuggestion && onActorAssigned && !suggestionDismissed && (
+              <div className="mt-1 flex items-center gap-1.5 text-[10px] text-cyan-300/90 bg-cyan-500/10 border border-cyan-500/20 rounded px-1.5 py-1">
+                <Crosshair className="w-3 h-3 flex-shrink-0" />
+                <span className="min-w-0 truncate">
+                  {actorSuggestion.indicators} shared indicator{actorSuggestion.indicators !== 1 ? 's' : ''} with{' '}
+                  <span className="font-semibold">{actorSuggestion.name}</span>
+                </span>
+                <button
+                  onClick={() => setShowActorAssign(true)}
+                  className="flex-shrink-0 underline underline-offset-2 hover:text-cyan-200"
+                >
+                  Link?
+                </button>
+                <button
+                  onClick={() => setSuggestionDismissed(true)}
+                  className="flex-shrink-0 text-muted-foreground/60 hover:text-muted-foreground"
+                  aria-label="Dismiss suggestion"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             {sessionId && onUpdateTags && (
               <div className="mt-1">
                 <TagEditor
@@ -740,6 +789,8 @@ export default function WorkflowCanvas({
                 iocs={result.iocs}
                 falsePositives={iocFalsePositives}
                 onToggleFalsePositive={sessionId ? toggleFalsePositive : undefined}
+                correlations={iocCorrelations?.correlations}
+                onPivot={onSelectSession ? (ioc) => setPivotIoc({ type: ioc.type, value: ioc.value }) : undefined}
               />
               {result.iocs.length > 0 && (
                 <Button
@@ -1049,6 +1100,16 @@ export default function WorkflowCanvas({
           actors={threatActors}
           onAssigned={onActorAssigned}
           mode="assign"
+        />
+      )}
+
+      {/* IOC correlation pivot */}
+      {pivotIoc && onSelectSession && (
+        <IOCPivot
+          type={pivotIoc.type}
+          value={pivotIoc.value}
+          onSelectSession={onSelectSession}
+          onClose={() => setPivotIoc(null)}
         />
       )}
 

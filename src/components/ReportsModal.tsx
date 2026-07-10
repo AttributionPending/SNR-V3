@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, BarChart2, ChevronLeft, ChevronRight, ExternalLink, Activity, Search, TrendingUp, Trash2, RotateCcw } from 'lucide-react';
+import { X, BarChart2, ChevronLeft, ChevronRight, ExternalLink, Activity, Search, TrendingUp, Trash2, RotateCcw, Crosshair } from 'lucide-react';
 import AnalyticsTab from './AnalyticsTab';
+import IndicatorsTab from './IndicatorsTab';
 import ConfirmDialog from './ConfirmDialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -199,6 +200,9 @@ export default function ReportsModal({ open, onClose, onSelectSession, onDeleteS
                 <TabsTrigger value="analytics" className="text-xs gap-1.5">
                   <TrendingUp className="w-3 h-3" />Analytics
                 </TabsTrigger>
+                <TabsTrigger value="indicators" className="text-xs gap-1.5">
+                  <Crosshair className="w-3 h-3" />Indicators
+                </TabsTrigger>
                 <TabsTrigger value="sessions" className="text-xs gap-1.5">
                   <ExternalLink className="w-3 h-3" />Session History
                 </TabsTrigger>
@@ -217,6 +221,11 @@ export default function ReportsModal({ open, onClose, onSelectSession, onDeleteS
             {/* ── Analytics Tab ── */}
             <TabsContent value="analytics" className="flex-1 overflow-hidden mt-0 relative min-h-0">
               <AnalyticsTab open={open} onSelectSession={onSelectSession} onClose={onClose} />
+            </TabsContent>
+
+            {/* ── Indicators Tab ── */}
+            <TabsContent value="indicators" className="flex-1 flex flex-col overflow-hidden mt-0 min-h-0 data-[state=inactive]:!hidden">
+              <IndicatorsTab open={open} onSelectSession={onSelectSession} onClose={onClose} />
             </TabsContent>
 
             {/* ── Sessions Tab ── */}

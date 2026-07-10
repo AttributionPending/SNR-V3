@@ -1,4 +1,4 @@
-import { Copy, Filter, AlertTriangle, Download, Shield, ShieldOff, FileSpreadsheet, Flag } from 'lucide-react';
+import { Copy, Filter, AlertTriangle, Download, Shield, ShieldOff, FileSpreadsheet, Flag, Crosshair } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
@@ -31,9 +31,13 @@ interface Props {
   falsePositives?: string[];
   /** Toggle false-positive state for an IOC key; absence hides the FP feature */
   onToggleFalsePositive?: (key: string) => void;
+  /** Per-IOC cross-session correlation, keyed by iocKey. `others` = # of other incidents. */
+  correlations?: Record<string, { others: number; actors?: { id: string; name: string; shared: number }[] }>;
+  /** Open the pivot for an indicator; absence hides the "seen in N" chip. */
+  onPivot?: (ioc: Pick<IOC, 'type' | 'value'>) => void;
 }
 
-export default function IOCTable({ iocs, falsePositives = [], onToggleFalsePositive }: Props) {
+export default function IOCTable({ iocs, falsePositives = [], onToggleFalsePositive, correlations, onPivot }: Props) {
   const [filter, setFilter] = useState<string>('all');
   const [hideInvalid, setHideInvalid] = useState(false);
   const [hideFp, setHideFp] = useState(false);
@@ -295,6 +299,24 @@ export default function IOCTable({ iocs, falsePositives = [], onToggleFalsePosit
                         <span className={cn('truncate', (isInvalid || isFp) && 'line-through opacity-60')}>
                           {displayValue(ioc)}
                         </span>
+                        {onPivot && (correlations?.[key]?.others ?? 0) > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => onPivot(ioc)}
+                                className="inline-flex items-center gap-0.5 text-[9px] flex-shrink-0 bg-cyan-900/40 text-cyan-300 hover:bg-cyan-800/60 px-1 py-0.5 rounded font-mono transition-colors"
+                              >
+                                <Crosshair className="w-2.5 h-2.5" />
+                                {correlations![key].others}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">
+                              Seen in {correlations![key].others} other incident{correlations![key].others !== 1 ? 's' : ''}
+                              {correlations![key].actors?.length ? ` · ${correlations![key].actors!.map((a) => a.name).join(', ')}` : ''}
+                              <div className="text-muted-foreground mt-0.5">Click to pivot</div>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate hidden sm:table-cell" title={ioc.context}>

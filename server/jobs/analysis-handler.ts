@@ -17,6 +17,7 @@ import { parseSections } from '../lib/sections.js';
 import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
+import { reindexSessionIocs } from '../lib/ioc-index.js';
 import { analysisRunsTotal, analysisDurationSeconds, jobsProcessedTotal } from '../lib/metrics.js';
 import logger from '../lib/logger.js';
 import { JobEventWriter } from './events.js';
@@ -118,6 +119,14 @@ export async function runAnalysisJob(jobId: string, p: AnalysisJobData): Promise
       await autoLinkThreatActor(db, p.sessionId, result, p.teamId, p.userId);
     } catch (err) {
       logger.warn({ err, session_id: p.sessionId }, 'Threat actor auto-link failed (non-fatal)');
+    }
+
+    // Rebuild the cross-session IOC index for this session (additive, failure-safe).
+    // Fresh analysis has no analyst false-positive overrides yet.
+    try {
+      await reindexSessionIocs(db, p.sessionId, p.teamId, result, []);
+    } catch (err) {
+      logger.warn({ err, session_id: p.sessionId }, 'IOC reindex failed (non-fatal)');
     }
 
     const techniques = result.attack_chain.map((t) => t.sub_technique_id ?? t.technique_id);

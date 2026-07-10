@@ -117,4 +117,50 @@ suite('sessions + brand-profiles routes', () => {
       expect(after.body.sessions.some((s: { id: string }) => s.id === id)).toBe(false);
     });
   });
+
+  describe('cross-session IOC correlation', () => {
+    const withIoc = (title: string, value: string, actorName: string | null = null) => ({
+      ...minimalResult(title),
+      iocs: [{ type: 'ipv4', value, context: 'beacon', confidence: 'High' }],
+      threat_actor: actorName
+        ? { name: actorName, aliases: [], motivation: null, attribution_confidence: 'High', malware_families: [] }
+        : { name: null, aliases: [], motivation: null, attribution_confidence: null, malware_families: [] },
+    });
+
+    it('indexes IOCs on write and correlates a shared indicator across incidents', async () => {
+      const shared = '203.0.113.77';
+      const a = await newSession();
+      const b = await newSession();
+      // b is attributed so it can surface as a suggested actor for a.
+      expect((await request(app).put(`/api/sessions/${a}/result`).set(auth(adminToken)).send({ result: withIoc('A', shared) })).status).toBe(200);
+      expect((await request(app).put(`/api/sessions/${b}/result`).set(auth(adminToken)).send({ result: withIoc('B', shared, 'APT-Corr') })).status).toBe(200);
+
+      // Per-session correlations: A sees 1 other incident sharing the IP + APT-Corr suggested.
+      const corr = await request(app).get(`/api/sessions/${a}/ioc-correlations`).set(auth(adminToken));
+      expect(corr.status).toBe(200);
+      expect(corr.body.correlations['ipv4::203.0.113.77'].others).toBe(1);
+      expect(corr.body.suggestedActors.some((x: { name: string }) => x.name === 'APT-Corr')).toBe(true);
+
+      // Occurrences: both incidents share the indicator.
+      const occ = await request(app).get('/api/iocs/occurrences').query({ type: 'ipv4', value: shared }).set(auth(adminToken));
+      expect(occ.status).toBe(200);
+      const ids = occ.body.sessions.map((s: { id: string }) => s.id);
+      expect(ids).toContain(a);
+      expect(ids).toContain(b);
+
+      // Browse list: the indicator shows a count of at least 2.
+      const list = await request(app).get('/api/iocs').query({ q: shared }).set(auth(adminToken));
+      expect(list.status).toBe(200);
+      const hit = list.body.indicators.find((i: { value: string }) => i.value === shared);
+      expect(hit?.sessionCount).toBeGreaterThanOrEqual(2);
+
+      // Soft-delete B → it drops out of A's correlation count.
+      expect((await request(app).delete(`/api/sessions/${b}`).set(auth(adminToken))).status).toBe(200);
+      const corr2 = await request(app).get(`/api/sessions/${a}/ioc-correlations`).set(auth(adminToken));
+      expect(corr2.body.correlations['ipv4::203.0.113.77']?.others ?? 0).toBe(0);
+
+      // cleanup
+      await request(app).post(`/api/sessions/${b}/restore`).set(auth(adminToken));
+    });
+  });
 });
