@@ -5,8 +5,8 @@
  * Backed by GET /api/iocs/occurrences.
  */
 import { useEffect, useState } from 'react';
-import { X, Crosshair, FileText, UserRound, Loader2 } from 'lucide-react';
-import { fetchIocOccurrences, type IocOccurrences } from '@/lib/api';
+import { X, Crosshair, FileText, UserRound, Loader2, PencilLine, Trash2 } from 'lucide-react';
+import { fetchIocOccurrences, deleteManualIoc, type IocOccurrences } from '@/lib/api';
 import { defangIoc } from '@/lib/defang';
 import { cn } from '@/lib/utils';
 import EntityAnnotations from './EntityAnnotations';
@@ -17,6 +17,8 @@ interface Props {
   /** Navigate to a session (closes the pivot). */
   onSelectSession: (sessionId: string) => void;
   onClose: () => void;
+  /** Called after a manual indicator is removed, so the host can refresh. */
+  onRemoved?: () => void;
 }
 
 const SEV_COLOR: Record<string, string> = {
@@ -26,10 +28,24 @@ const SEV_COLOR: Record<string, string> = {
   Low: 'text-emerald-400',
 };
 
-export default function IOCPivot({ type, value, onSelectSession, onClose }: Props) {
+export default function IOCPivot({ type, value, onSelectSession, onClose, onRemoved }: Props) {
   const [data, setData] = useState<IocOccurrences | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  const removeManual = async () => {
+    if (!window.confirm('Remove this manually-added indicator?')) return;
+    setRemoving(true);
+    try {
+      await deleteManualIoc(type, value);
+      onRemoved?.();
+      onClose();
+    } catch {
+      setError('Could not remove the indicator.');
+      setRemoving(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -87,6 +103,24 @@ export default function IOCPivot({ type, value, onSelectSession, onClose }: Prop
 
           {!loading && !error && data && (
             <>
+              {data.manual && (
+                <div className="mb-4 rounded-md border border-primary/25 bg-primary/5 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <PencilLine className="w-3 h-3 text-primary" />
+                    <span className="text-[10px] uppercase tracking-wide text-primary font-semibold flex-1">Manually added</span>
+                    <button onClick={() => void removeManual()} disabled={removing} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 disabled:opacity-60" title="Remove indicator">
+                      {removing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />} Remove
+                    </button>
+                  </div>
+                  {data.manual.context && <p className="text-xs text-foreground/90 mb-1">{data.manual.context}</p>}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                    {data.manual.confidence && <span>Confidence: <span className="text-foreground/80">{data.manual.confidence}</span></span>}
+                    {data.manual.source && <span>Source: <span className="text-foreground/80">{data.manual.source}</span></span>}
+                    {data.manual.authorName && <span>Added by {data.manual.authorName}</span>}
+                  </div>
+                </div>
+              )}
+
               {data.actors.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground/70 mb-2">

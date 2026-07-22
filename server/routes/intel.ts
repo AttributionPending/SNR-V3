@@ -8,6 +8,7 @@
  */
 import { Router } from 'express';
 import { getDb } from '../db/database.js';
+import { combinedIndicatorsCte, COMBINED_SELECT, mapMergedIndicator } from '../lib/ioc-holdings.js';
 import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 
@@ -23,7 +24,6 @@ router.get('/overview', async (req: Request, res: Response) => {
   const sTeam = teamId ? 'AND s.team_id = ?' : '';
   const sTeamP = teamId ? [teamId] : [];
   const oTeam = teamId ? 'AND o.team_id = ?' : '';
-  const oTeamP = teamId ? [teamId] : [];
   const live = "s.deleted_at IS NULL AND s.status = 'complete'";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,31 +32,35 @@ router.get('/overview', async (req: Request, res: Response) => {
     return Number(r?.c ?? 0);
   };
 
-  const iocSelect = (orderBy: string) => `
-    SELECT o.ioc_type, MIN(o.ioc_value) AS ioc_value, o.ioc_value_norm,
-           COUNT(DISTINCT o.session_id) AS session_count, MAX(o.created_at) AS last_seen
-    FROM ioc_observations o JOIN sessions s ON s.id = o.session_id
-    WHERE ${live} ${oTeam}
-    GROUP BY o.ioc_type, o.ioc_value_norm
+  // Merged indicators (report-derived + manual), collapsed by (type, norm).
+  const merged = combinedIndicatorsCte(teamId);
+  const iocSelect = (orderBy: string) => `${merged.cte}
+    SELECT ${COMBINED_SELECT}
+    FROM combined
+    GROUP BY type, norm
     ORDER BY ${orderBy}
     LIMIT ${N}`;
-  const mapIocs = (rows: Array<Record<string, unknown>>) => rows.map((r) => ({
-    type: r.ioc_type as string, value: r.ioc_value as string, norm: r.ioc_value_norm as string,
-    sessionCount: Number(r.session_count), lastSeen: Number(r.last_seen),
-  }));
+  const mapIocs = (rows: Array<Record<string, unknown>>) => rows.map(mapMergedIndicator);
+  // Distinct-indicator count across both sources.
+  const indicatorsCountSql = `SELECT COUNT(*) AS c FROM (
+      SELECT o.ioc_type, o.ioc_value_norm FROM ioc_observations o JOIN sessions s ON s.id = o.session_id WHERE ${live} ${oTeam}
+      UNION
+      SELECT m.ioc_type, m.ioc_value_norm FROM manual_iocs m ${teamId ? 'WHERE m.team_id = ?' : ''}
+    ) x`;
+  const indicatorsCountP = teamId ? [teamId, teamId] : [];
 
   const [
     indicators, actors, techniques, incidents, cases,
     topIocRows, recentIocRows, actorRows, techRows, recentSessionRows,
   ] = await Promise.all([
-    scalar(`SELECT COUNT(*) AS c FROM (SELECT 1 FROM ioc_observations o JOIN sessions s ON s.id = o.session_id WHERE ${live} ${oTeam} GROUP BY o.ioc_type, o.ioc_value_norm) x`, oTeamP),
+    scalar(indicatorsCountSql, indicatorsCountP),
     scalar(`SELECT COUNT(*) AS c FROM threat_actors ta WHERE ta.name <> 'Unattributed' ${teamId ? 'AND ta.team_id = ?' : ''}`, teamId ? [teamId] : []),
     scalar(`SELECT COUNT(*) AS c FROM (SELECT DISTINCT tech.value ->> 'technique_id' AS tid FROM analysis_results ar JOIN sessions s ON s.id = ar.session_id, snr_json_array(ar.result_json, 'attack_chain') AS tech(value) WHERE ${live} ${sTeam} AND tech.value ->> 'technique_id' IS NOT NULL) x`, sTeamP),
     scalar(`SELECT COUNT(*) AS c FROM sessions s WHERE ${live} ${sTeam}`, sTeamP),
     scalar(`SELECT COUNT(*) AS c FROM cases c ${teamId ? 'WHERE c.team_id = ?' : ''}`, teamId ? [teamId] : []),
 
-    db.prepare(iocSelect('session_count DESC, last_seen DESC')).all(...oTeamP),
-    db.prepare(iocSelect('last_seen DESC')).all(...oTeamP),
+    db.prepare(iocSelect('session_count DESC, last_seen DESC')).all(...merged.params),
+    db.prepare(iocSelect('last_seen DESC')).all(...merged.params),
 
     db.prepare(`
       SELECT ta.id, ta.name, ta.attribution_confidence,
@@ -125,8 +129,6 @@ router.get('/holdings', async (req: Request, res: Response) => {
 
   const sTeam = teamId ? 'AND s.team_id = ?' : '';
   const sTeamP = teamId ? [teamId] : [];
-  const oTeam = teamId ? 'AND o.team_id = ?' : '';
-  const oTeamP = teamId ? [teamId] : [];
   const taTeam = teamId ? 'AND ta.team_id = ?' : '';
   const taTeamP = teamId ? [teamId] : [];
   const live = "s.deleted_at IS NULL AND s.status = 'complete'";
@@ -137,14 +139,14 @@ router.get('/holdings', async (req: Request, res: Response) => {
 
   if (kind === 'indicators') {
     const orderBy = order === 'recent' ? 'last_seen DESC' : 'session_count DESC, last_seen DESC';
-    sql = `SELECT o.ioc_type, MIN(o.ioc_value) AS ioc_value, o.ioc_value_norm,
-                  COUNT(DISTINCT o.session_id) AS session_count, MAX(o.created_at) AS last_seen
-           FROM ioc_observations o JOIN sessions s ON s.id = o.session_id
-           WHERE ${live} ${oTeam}
-           GROUP BY o.ioc_type, o.ioc_value_norm
+    const merged = combinedIndicatorsCte(teamId);
+    sql = `${merged.cte}
+           SELECT ${COMBINED_SELECT}
+           FROM combined
+           GROUP BY type, norm
            ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-    params = [...oTeamP];
-    map = (r) => ({ type: r.ioc_type as string, value: r.ioc_value as string, norm: r.ioc_value_norm as string, sessionCount: Number(r.session_count), lastSeen: Number(r.last_seen) });
+    params = [...merged.params];
+    map = (r) => mapMergedIndicator(r);
   } else if (kind === 'actors') {
     const orderBy = order === 'recent' ? 'latest DESC NULLS LAST, session_count DESC' : 'session_count DESC, latest DESC NULLS LAST';
     sql = `SELECT ta.id, ta.name, ta.attribution_confidence,

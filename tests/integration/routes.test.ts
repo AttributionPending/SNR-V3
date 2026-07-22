@@ -382,5 +382,37 @@ suite('sessions + brand-profiles routes', () => {
       const bad = await request(app).get('/api/intel/holdings').query({ kind: 'nope' }).set(auth(adminToken));
       expect(bad.status).toBe(400);
     });
+
+    it('adds a manual indicator, merges it into holdings, and removes it', async () => {
+      const manualIp = '203.0.113.222';
+      // viewer cannot add
+      const vp = await request(app).post('/api/iocs').set(auth(viewerToken)).send({ type: 'ipv4', value: manualIp });
+      expect(vp.status).toBe(403);
+
+      // admin adds a curated indicator not tied to any report
+      const add = await request(app).post('/api/iocs').set(auth(adminToken)).send({ type: 'ipv4', value: manualIp, context: 'from advisory', confidence: 'High', source: 'CISA' });
+      expect(add.status).toBe(200);
+
+      // it appears in the merged browse list, flagged manual with 0 incidents
+      const list = await request(app).get('/api/iocs').query({ q: manualIp }).set(auth(adminToken));
+      const hit = list.body.indicators.find((i: { value: string }) => i.value === manualIp);
+      expect(hit).toBeTruthy();
+      expect(hit.manual).toBe(true);
+      expect(hit.sessionCount).toBe(0);
+
+      // …and in the intel holdings indicators
+      const hold = await request(app).get('/api/intel/holdings').query({ kind: 'indicators', order: 'recent', limit: 100 }).set(auth(adminToken));
+      expect(hold.body.items.some((i: { value: string; manual: boolean }) => i.value === manualIp && i.manual)).toBe(true);
+
+      // occurrences report the manual provenance
+      const occ = await request(app).get('/api/iocs/occurrences').query({ type: 'ipv4', value: manualIp }).set(auth(adminToken));
+      expect(occ.body.manual).toBeTruthy();
+      expect(occ.body.manual.source).toBe('CISA');
+
+      // remove it
+      expect((await request(app).delete('/api/iocs/manual').query({ type: 'ipv4', value: manualIp }).set(auth(adminToken))).status).toBe(200);
+      const after = await request(app).get('/api/iocs').query({ q: manualIp }).set(auth(adminToken));
+      expect(after.body.indicators.some((i: { value: string }) => i.value === manualIp)).toBe(false);
+    });
   });
 });

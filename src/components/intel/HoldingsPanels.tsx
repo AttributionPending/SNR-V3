@@ -64,7 +64,8 @@ export function IndicatorRow({ item, onSelect }: { item: IocIndicator; onSelect:
     <button className={rowCls} onClick={() => onSelect(item.type, item.value)}>
       <span className={cn('font-mono text-[10px] w-14 flex-shrink-0 uppercase', IOC_TYPE_COLOR[item.type] ?? 'text-muted-foreground')}>{item.type}</span>
       <span className="font-mono flex-1 truncate text-foreground group-hover:text-cyan-300">{defangIoc(item.type, item.value)}</span>
-      <span className="text-[10px] text-muted-foreground/70 flex-shrink-0">{item.sessionCount}</span>
+      {item.manual && <span className="text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25 flex-shrink-0" title={item.source ? `Manually added · ${item.source}` : 'Manually added'}>manual</span>}
+      <span className="text-[10px] text-muted-foreground/70 flex-shrink-0 w-4 text-right">{item.sessionCount}</span>
     </button>
   );
 }

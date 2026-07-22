@@ -4,11 +4,12 @@
  * drilling into the existing detail surfaces. Backed by GET /api/intel/overview.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, RefreshCw, Globe, Shield, Crosshair, FileText } from 'lucide-react';
+import { Search, Loader2, RefreshCw, Globe, Shield, Crosshair, FileText, Plus } from 'lucide-react';
 import * as api from '@/lib/api';
 import type { IntelOverview } from '@/lib/api';
 import { StatTiles } from './intel/HoldingsPanels';
 import HoldingsCard from './intel/HoldingsCard';
+import AddIocDialog from './intel/AddIocDialog';
 import IOCPivot from './IOCPivot';
 
 interface Props {
@@ -21,6 +22,7 @@ export default function IntelDashboard({ onSelectSession, onSelectThreatActor, o
   const [data, setData] = useState<IntelOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [pivot, setPivot] = useState<{ type: string; value: string } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(async () => {
@@ -40,6 +42,9 @@ export default function IntelDashboard({ onSelectSession, onSelectThreatActor, o
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => void load()} className="p-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-foreground hover:bg-secondary/50" title="Add a manual indicator">
+              <Plus className="w-3.5 h-3.5" /> Add indicator
+            </button>
             <button onClick={() => onOpenSearch()} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground">
               <Search className="w-3.5 h-3.5" /> Search intelligence
             </button>
@@ -71,7 +76,8 @@ export default function IntelDashboard({ onSelectSession, onSelectThreatActor, o
         )}
       </div>
 
-      {pivot && <IOCPivot type={pivot.type} value={pivot.value} onSelectSession={(id) => { setPivot(null); onSelectSession(id); }} onClose={() => setPivot(null)} />}
+      {pivot && <IOCPivot type={pivot.type} value={pivot.value} onSelectSession={(id) => { setPivot(null); onSelectSession(id); }} onClose={() => setPivot(null)} onRemoved={() => void load()} />}
+      {addOpen && <AddIocDialog onClose={() => setAddOpen(false)} onAdded={() => void load()} />}
     </main>
   );
 }

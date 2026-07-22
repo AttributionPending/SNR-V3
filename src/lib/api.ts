@@ -141,7 +141,7 @@ export async function fetchIocCorrelations(sessionId: string): Promise<IocCorrel
   return res.json() as Promise<IocCorrelations>;
 }
 
-export interface IocIndicator { type: string; value: string; norm: string; sessionCount: number; lastSeen: number }
+export interface IocIndicator { type: string; value: string; norm: string; sessionCount: number; lastSeen: number; manual?: boolean; source?: string | null }
 
 /** Browse distinct indicators across the team with incident counts. */
 export async function listIocs(q = '', type = '', limit = 50, order: 'count' | 'recent' = 'count'): Promise<IocIndicator[]> {
@@ -156,11 +156,32 @@ export async function listIocs(q = '', type = '', limit = 50, order: 'count' | '
   return data.indicators;
 }
 
+export interface NewManualIoc { type: string; value: string; context?: string; confidence?: string; source?: string }
+
+/** Add a manual (curated) indicator that is not tied to any report. */
+export async function createManualIoc(ioc: NewManualIoc): Promise<void> {
+  const res = await authFetch(`${BASE}/iocs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ioc) });
+  if (!res.ok) {
+    const msg = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(msg.error || 'Failed to add indicator');
+  }
+}
+
+/** Remove a manual indicator (by type + value). */
+export async function deleteManualIoc(type: string, value: string): Promise<void> {
+  const qs = new URLSearchParams({ type, value });
+  const res = await authFetch(`${BASE}/iocs/manual?${qs.toString()}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to remove indicator');
+}
+
+export interface IocManualProvenance { context: string; confidence: string | null; source: string; authorName: string; createdAt: number }
+
 export interface IocOccurrences {
   type: string;
   value: string;
   sessions: { id: string; name: string; severity: string | null; createdAt: number }[];
   actors: { id: string; name: string }[];
+  manual: IocManualProvenance | null;
 }
 
 /** Every incident (and attributed actor) sharing one indicator. */
