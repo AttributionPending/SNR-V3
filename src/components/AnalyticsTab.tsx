@@ -55,8 +55,8 @@ const EXPORT_COLORS: Record<string, string> = {
 };
 
 const TOOLTIP_STYLE: React.CSSProperties = {
-  background: '#161922',
-  border: '1px solid #1e293b',
+  background: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--n-600))',
   borderRadius: 6,
   fontSize: 11,
 };
@@ -233,7 +233,7 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
   // Theme-aware chart structural colors (grid/axis/tooltip) so charts flip.
   const { theme } = useTheme();
   const chart = theme === 'dark'
-    ? { grid: '#2a2f3a', tick: '#8b9096', tipBg: '#161922', tipBorder: '#2a2f3a', tipText: '#e6e8eb', dot: '#161922' }
+    ? { grid: '#2a2f3a', tick: '#8b9096', tipBg: 'hsl(var(--card))', tipBorder: '#2a2f3a', tipText: '#e6e8eb', dot: 'hsl(var(--card))' }
     : { grid: '#e4e8ec', tick: '#6b7280', tipBg: '#ffffff', tipBorder: '#dfe3e8', tipText: '#1f2937', dot: '#ffffff' };
   const tooltipStyle: React.CSSProperties = { ...TOOLTIP_STYLE, background: chart.tipBg, border: `1px solid ${chart.tipBorder}`, color: chart.tipText };
 

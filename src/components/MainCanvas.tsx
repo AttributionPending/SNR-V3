@@ -136,7 +136,7 @@ export default function MainCanvas({
           {/* ATT&CK Chain */}
           <div className="border-b border-border">
             <div className="px-4 py-2 flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <Activity className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground">ATT&CK Chain</span>
               <span className="text-[10px] text-muted-foreground">
                 {result.attack_chain.length} technique{result.attack_chain.length !== 1 ? 's' : ''} · Click node for details
@@ -213,7 +213,7 @@ export default function MainCanvas({
               onClick={() => setNotesExpanded(!notesExpanded)}
             >
               <div className="flex items-center gap-2">
-                <NotebookPen className="w-3.5 h-3.5 text-cyan-400/70" />
+                <NotebookPen className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs font-semibold text-foreground">Analyst Notebook</span>
                 <span className="text-[10px] text-muted-foreground">
                   {notesExpanded ? '— your notes, saved automatically' : '— click to expand'}

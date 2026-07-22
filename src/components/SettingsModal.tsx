@@ -272,7 +272,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4 text-cyan-400" />
+            <Settings className="w-4 h-4 text-muted-foreground" />
             <h2 className="text-sm font-semibold text-foreground">Settings</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Close">
@@ -635,7 +635,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                   rows={8}
                   footer={
                     <div className="mt-1.5 text-[10px] text-muted-foreground/60 leading-relaxed">
-                      <span className="text-cyan-400/70 font-mono">Variables: </span>
+                      <span className="text-muted-foreground font-mono">Variables: </span>
                       {['{audience}', '{date}', '{audience_guidance}', '{technical_findings}'].map((v) => (
                         <span key={v} className="font-mono bg-navy-950 border border-border/60 rounded px-1 py-0.5 mr-1">{v}</span>
                       ))}
@@ -730,7 +730,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                                   <span className="text-[9px] uppercase tracking-widest text-muted-foreground/50 font-sans font-medium">System Prompt</span>
                                   <span className="text-[9px] text-muted-foreground/30 font-sans">— sent on both API calls</span>
                                   {settings['system_prompt_override']?.trim() && (
-                                    <span className="text-[9px] text-cyan-400/70 font-sans ml-auto">✎ custom</span>
+                                    <span className="text-[9px] text-muted-foreground font-sans ml-auto">✎ custom</span>
                                   )}
                                 </div>
                                 <pre className="px-3 py-2.5 text-muted-foreground/50 whitespace-pre-wrap leading-relaxed overflow-x-auto">
@@ -742,7 +742,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                                   <span className="text-[9px] uppercase tracking-widest text-muted-foreground/50 font-sans font-medium">Phase 1 · Technical Extraction</span>
                                   <span className="text-[9px] text-yellow-500/60 font-sans">— audience prompt not used here</span>
                                   {settings['phase1_instructions_override']?.trim() && (
-                                    <span className="text-[9px] text-cyan-400/70 font-sans ml-auto">✎ custom</span>
+                                    <span className="text-[9px] text-muted-foreground font-sans ml-auto">✎ custom</span>
                                   )}
                                 </div>
                                 <pre className="px-3 py-2.5 text-muted-foreground/40 whitespace-pre-wrap leading-relaxed overflow-x-auto">
@@ -752,9 +752,9 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                               <div>
                                 <div className="flex items-center gap-2 px-3 py-1.5 bg-navy-800/60 border-b border-border/40">
                                   <span className="text-[9px] uppercase tracking-widest text-muted-foreground/50 font-sans font-medium">Phase 2 · Stakeholder Brief</span>
-                                  <span className="text-[9px] text-cyan-400/70 font-sans">— your audience prompt is injected here</span>
+                                  <span className="text-[9px] text-muted-foreground font-sans">— your audience prompt is injected here</span>
                                   {phase2TemplateOverride && (
-                                    <span className="text-[9px] text-cyan-400/70 font-sans ml-auto">✎ custom template</span>
+                                    <span className="text-[9px] text-muted-foreground font-sans ml-auto">✎ custom template</span>
                                   )}
                                 </div>
                                 <div className="px-3 py-2.5 leading-relaxed overflow-x-auto">
@@ -795,7 +795,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                   <div className="border-t border-border/60 pt-4 space-y-4">
                     <div className="text-[10px] uppercase tracking-widest text-muted-foreground/50 flex items-center gap-1.5">
                       <span>Custom Audiences</span>
-                      <span className="text-[9px] bg-cyan-500/10 text-cyan-400/70 px-1.5 py-0.5 rounded-full">{customAudiences.length}</span>
+                      <span className="text-[9px] bg-cyan-500/10 text-muted-foreground px-1.5 py-0.5 rounded-full">{customAudiences.length}</span>
                     </div>
                     {customAudiences.map((ca) => (
                       <div key={ca.id} className="space-y-1.5">

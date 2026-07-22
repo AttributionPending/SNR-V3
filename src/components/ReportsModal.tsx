@@ -193,7 +193,7 @@ export default function ReportsModal({ open, onClose, onSelectSession, onDeleteS
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-cyan-400" />
+            <BarChart2 className="w-4 h-4 text-muted-foreground" />
             <h2 className="text-sm font-semibold text-foreground">Activity & Reports</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Close">
@@ -203,7 +203,7 @@ export default function ReportsModal({ open, onClose, onSelectSession, onDeleteS
 
         {/* Stats bar */}
         <div className="px-5 py-3 border-b border-border bg-secondary/10 flex items-center gap-6 flex-wrap">
-          <Stat label="Total Sessions" value={stats.totalSessions} color="text-cyan-400" />
+          <Stat label="Total Sessions" value={stats.totalSessions} color="text-foreground" />
           <Stat label="Analyses Run" value={stats.analyses} color="text-green-400" />
           <Stat label="Exports Generated" value={stats.exports} color="text-orange-400" />
           {Object.entries(stats.bySeverity).map(([sev, count]) => (

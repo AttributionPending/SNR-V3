@@ -680,7 +680,7 @@ export default function WorkflowCanvas({
         {/* ATT&CK Chain / Attack Flow */}
         <div className="border-b border-border">
           <div className="px-4 py-2 flex items-center gap-2">
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <Activity className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-semibold text-foreground">
               {chainViewMode === 'flow' && hasAttackFlow ? 'Attack Flow' : 'ATT&CK Chain'}
             </span>
@@ -856,7 +856,7 @@ export default function WorkflowCanvas({
             onClick={() => setNotesExpanded(!notesExpanded)}
           >
             <div className="flex items-center gap-2">
-              <NotebookPen className="w-3.5 h-3.5 text-cyan-400/70" />
+              <NotebookPen className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground">Analyst Notebook</span>
               <span className="text-[10px] text-muted-foreground">
                 {notesExpanded ? '— your notes, saved automatically' : '— click to expand'}
@@ -1038,7 +1038,7 @@ export default function WorkflowCanvas({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 flex-shrink-0">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <Activity className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground">
                 {chainViewMode === 'flow' && hasAttackFlow ? 'Attack Flow' : 'ATT&CK Chain'}
               </span>
@@ -1365,7 +1365,7 @@ function EmailEditor({
 function EditField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <div className="text-[9px] uppercase tracking-wide text-cyan-400/70 font-medium">{label}</div>
+      <div className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       {children}
     </div>
   );
@@ -1375,7 +1375,7 @@ function StixPreview({ result }: { result: AnalysisResult }) {
   return (
     <div className="rounded-lg border border-border bg-navy-950 p-4 space-y-2 text-xs">
       <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-3">Bundle Contents</div>
-      <StixRow label="Attack Patterns" count={result.attack_chain.length} color="text-cyan-400" />
+      <StixRow label="Attack Patterns" count={result.attack_chain.length} color="text-foreground" />
       <StixRow label="Indicators (IOCs)" count={result.iocs.length} color="text-orange-400" />
       <StixRow label="Affected Assets" count={result.affected_assets.length} color="text-yellow-400" />
       {result.threat_actor?.name && (

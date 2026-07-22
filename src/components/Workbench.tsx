@@ -209,7 +209,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <PenLine className="w-4 h-4 text-cyan-400" />
+          <PenLine className="w-4 h-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold text-foreground">Analyst Workbench</h2>
           <span className="text-[11px] text-muted-foreground">Original research — you author the intelligence; every export uses it.</span>
         </div>
@@ -334,7 +334,7 @@ export default function Workbench({ open, onClose, sessionId, initial, expectedV
                   <div className="col-span-3"><LabeledInput label="Description" value={r.description} onChange={(v) => mutList('detection_rules', (a) => updateAt(a, i, { description: v }))} /></div>
                   <LabeledSelect label="Confidence" value={r.confidence} onChange={(v) => mutList('detection_rules', (a) => updateAt(a, i, { confidence: v as DetectionRule['confidence'] }))} options={CONFIDENCE as unknown as string[]} />
                   <div className="col-span-4">
-                    <label className="text-[10px] uppercase tracking-wide text-cyan-400/70 font-medium">Rule Content</label>
+                    <label className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Rule Content</label>
                     <textarea value={r.rule_content} onChange={(e) => mutList('detection_rules', (a) => updateAt(a, i, { rule_content: e.target.value }))} rows={6}
                       className="w-full mt-1 bg-secondary/40 border border-border rounded px-2 py-1.5 text-xs font-mono text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-cyan-500/50" placeholder="title: …" />
                   </div>
@@ -475,7 +475,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-cyan-400/70 font-medium">{label}</div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
         {hint && <span className="text-[9px] text-muted-foreground/60 text-right">{hint}</span>}
       </div>
       {children}

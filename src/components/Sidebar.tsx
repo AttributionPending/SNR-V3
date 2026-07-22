@@ -717,7 +717,7 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
                       {session.tags && session.tags.slice(0, 3).map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center gap-0.5 text-[8px] px-1 py-0 h-3.5 rounded bg-cyan-500/10 text-cyan-400/70 border border-cyan-500/20"
+                          className="inline-flex items-center gap-0.5 text-[8px] px-1 py-0 h-3.5 rounded bg-cyan-500/10 text-muted-foreground border border-cyan-500/20"
                         >
                           <Tag className="w-2 h-2" />
                           {tag}
@@ -873,7 +873,7 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
               <Tag className="w-3 h-3 opacity-60" />
               Manage Tags
               {session.tags && session.tags.length > 0 && (
-                <span className="text-[9px] text-cyan-400/70 ml-auto">{session.tags.length}</span>
+                <span className="text-[9px] text-muted-foreground ml-auto">{session.tags.length}</span>
               )}
             </button>
             <button
@@ -1008,7 +1008,7 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
                       {actor.name}
                     </div>
                     {actor.intrusion_set && (
-                      <div className="text-[10px] text-cyan-400/70 truncate mt-0.5">
+                      <div className="text-[10px] text-muted-foreground truncate mt-0.5">
                         {actor.intrusion_set}
                       </div>
                     )}

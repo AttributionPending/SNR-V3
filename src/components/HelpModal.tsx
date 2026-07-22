@@ -101,7 +101,7 @@ export default function HelpModal({ open, onClose }: Props) {
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border flex-shrink-0">
-          <BookOpen className="w-5 h-5 text-cyan-400" />
+          <BookOpen className="w-5 h-5 text-muted-foreground" />
           <div className="flex-1">
             <h2 className="text-base font-semibold text-foreground">SNR — Help & Configuration Guide</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Signal to Noise · Cyber Threat Intelligence Automation</p>

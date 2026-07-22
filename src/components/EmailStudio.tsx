@@ -320,7 +320,7 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Mail className="w-4 h-4 text-cyan-400" />
+          <Mail className="w-4 h-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold text-foreground">Email Studio</h2>
           <span className="text-[11px] text-muted-foreground">
             {isStandalone
@@ -346,8 +346,8 @@ export default function EmailStudio({ open, onClose, sessionId, result, audience
 
       {/* Brand profile bar — the per-session white-label selection. */}
       <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-navy-900/30 flex-shrink-0">
-        <Sparkles className="w-3.5 h-3.5 text-cyan-400/70 flex-shrink-0" />
-        <span className="text-[10px] uppercase tracking-wide text-cyan-400/70 font-medium">Brand</span>
+        <Sparkles className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Brand</span>
         <select
           value={activeProfileId ?? ''}
           onChange={(e) => selectProfile(e.target.value || null)}
@@ -593,7 +593,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-cyan-400/70 font-medium">{label}</div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
         {hint && <span className="text-[9px] text-yellow-400/70 text-right">{hint}</span>}
       </div>
       {children}

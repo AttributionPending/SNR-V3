@@ -63,7 +63,7 @@ function FlowCard({ data }: { data: FlowNodeData }) {
     const label = node.type === 'operator_and' ? 'AND' : 'OR';
     return (
       <div
-        className="flex items-center justify-center rounded-md border border-slate-500/40 bg-slate-600/20 text-slate-300 font-bold text-[11px] tracking-widest"
+        className="flex items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground font-bold text-[11px] tracking-widest"
         style={{ width: OP_W, height: OP_H }}
       >
         <Handle type="target" position={Position.Top} className="!bg-slate-500" />
@@ -84,8 +84,8 @@ function FlowCard({ data }: { data: FlowNodeData }) {
       className={cn(
         'rounded-lg border bg-navy-800 transition-all text-left',
         isAction && technique
-          ? 'border-slate-700 hover:border-cyan-500/50 cursor-pointer'
-          : 'border-slate-700/70',
+          ? 'border-border hover:border-cyan-500/50 cursor-pointer'
+          : 'border-border',
       )}
       style={{ width: NODE_W, minHeight: NODE_H, borderTopColor: color, borderTopWidth: 3 }}
     >
@@ -102,7 +102,7 @@ function FlowCard({ data }: { data: FlowNodeData }) {
         </div>
         <div className="text-xs font-medium text-foreground leading-tight line-clamp-2">{node.name}</div>
         {node.description && (
-          <p className="mt-1 text-[9px] leading-snug text-slate-400 line-clamp-2">{node.description}</p>
+          <p className="mt-1 text-[9px] leading-snug text-muted-foreground line-clamp-2">{node.description}</p>
         )}
         {isAction && technique && (
           <span
@@ -187,7 +187,7 @@ function layout(flow: AttackFlow): { nodes: Node[]; edges: Edge[]; chainLookup: 
         animated: backbone,
         style: { stroke: backbone ? 'rgba(63,131,230,0.55)' : 'rgba(148,163,184,0.4)', strokeWidth: 1.5 },
         labelStyle: { fontSize: 10, fill: 'rgba(226,232,240,0.75)' },
-        labelBgStyle: { fill: 'rgba(13,21,38,0.9)' },
+        labelBgStyle: { fill: 'hsl(var(--card))' },
         labelBgPadding: [3, 4] as [number, number],
         markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: backbone ? 'rgba(63,131,230,0.6)' : 'rgba(148,163,184,0.5)' },
       } as Edge;
@@ -228,7 +228,7 @@ export default function AttackFlowView({ flow, attackChain, onExpand }: Props) {
         nodesDraggable
         nodesConnectable={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1e293b" />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="hsl(var(--n-600))" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

@@ -319,7 +319,7 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <Link2 className="w-4 h-4 text-cyan-400" />
+              <Link2 className="w-4 h-4 text-muted-foreground" />
               Linked Sessions ({detail.sessions.length})
             </h2>
             <Button
@@ -469,7 +469,7 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
         {detail.aggregated_iocs.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-cyan-400" />
+              <Shield className="w-4 h-4 text-muted-foreground" />
               Aggregated IOCs ({detail.aggregated_iocs.length})
             </h2>
             <div className="space-y-4">

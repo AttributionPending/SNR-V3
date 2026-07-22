@@ -128,7 +128,7 @@ export default function ApiKeysPanel() {
             {accounts.length === 0 && <p className="text-xs text-muted-foreground py-4 text-center">No service accounts yet.</p>}
             {accounts.map((a) => (
               <button key={a.id} onClick={() => loadKeys(a)} className="w-full flex items-center gap-2 bg-muted/20 hover:bg-muted/40 border border-border rounded px-3 py-2 text-left transition-colors">
-                <KeyRound className="w-4 h-4 text-cyan-400/70" />
+                <KeyRound className="w-4 h-4 text-muted-foreground" />
                 <div className="flex-1">
                   <div className="text-xs font-medium flex items-center gap-2">{a.name}{a.disabled ? <span className="text-[10px] text-red-400">disabled</span> : null}</div>
                   <div className="text-[10px] text-muted-foreground">{a.role} · {a.active_keys} active key{a.active_keys === 1 ? '' : 's'}</div>
@@ -146,7 +146,7 @@ export default function ApiKeysPanel() {
               <Ban className="w-3.5 h-3.5" /> {selected.disabled ? 'Enable' : 'Disable'} account
             </button>
           </div>
-          <h3 className="text-sm font-semibold flex items-center gap-2"><KeyRound className="w-4 h-4 text-cyan-400" /> {selected.name}</h3>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><KeyRound className="w-4 h-4 text-muted-foreground" /> {selected.name}</h3>
 
           {mintedToken && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded p-3 space-y-2">

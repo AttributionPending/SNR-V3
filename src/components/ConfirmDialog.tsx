@@ -63,7 +63,7 @@ export default function ConfirmDialog({
             )}>
               {danger
                 ? <AlertTriangle className="w-4 h-4 text-red-400" />
-                : <HelpCircle className="w-4 h-4 text-cyan-400" />}
+                : <HelpCircle className="w-4 h-4 text-muted-foreground" />}
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-sm font-semibold text-foreground">{title}</h2>

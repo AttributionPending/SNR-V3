@@ -40,7 +40,7 @@ function AttackNode({ data }: { data: AttackNodeData }) {
           <button
             onClick={() => onExpand(technique)}
             className={cn(
-              'group rounded-lg border border-slate-700 bg-navy-800 hover:border-cyan-500/50 transition-all cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-cyan-500',
+              'group rounded-lg border border-border bg-navy-800 hover:border-cyan-500/50 transition-all cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-cyan-500',
               // Fill the ReactFlow node wrapper so the box width matches the
               // tactic header above it (196px normally, 220px during capture).
               'w-full',
@@ -67,8 +67,8 @@ function AttackNode({ data }: { data: AttackNodeData }) {
               </div>
               {/* Evidence blurb — only rendered during capture for the email image */}
               {showEvidence && evidenceSnippet && (
-                <div className="mt-2 pt-2 border-t border-slate-700/50">
-                  <p className="text-[8px] leading-[1.35] text-slate-400">
+                <div className="mt-2 pt-2 border-t border-border">
+                  <p className="text-[8px] leading-[1.35] text-muted-foreground">
                     {evidenceSnippet}
                   </p>
                 </div>
@@ -337,7 +337,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
         await new Promise<void>((r) => setTimeout(r, 500));
 
         const dataUrl = await toPng(el, {
-          backgroundColor: '#161922',
+          backgroundColor: 'hsl(var(--card))',
           skipFonts: true,
           pixelRatio: 2,
           width: captureW,
@@ -392,7 +392,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
             return tech ? (CONFIDENCE_COLORS[tech.confidence] ?? '#888') : '#888';
           }}
           maskColor="rgba(7,13,26,0.7)"
-          style={{ background: '#161922' }}
+          style={{ background: 'hsl(var(--card))' }}
         />
       </ReactFlow>
       {/* Legend */}

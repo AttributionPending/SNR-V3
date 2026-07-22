@@ -22,7 +22,7 @@ export default function TechniqueDetail({ technique, onClose }: Props) {
         <div className="flex items-start justify-between p-4 border-b border-border">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4 text-cyan-400" />
+              <Shield className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs font-mono text-cyan-400">
                 {technique.sub_technique_id ?? technique.technique_id}
               </span>

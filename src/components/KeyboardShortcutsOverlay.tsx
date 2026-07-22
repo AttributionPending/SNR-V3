@@ -17,7 +17,7 @@ export default function KeyboardShortcutsOverlay({ open, onClose }: Props) {
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Keyboard className="w-4 h-4 text-cyan-400" />
+            <Keyboard className="w-4 h-4 text-muted-foreground" />
             Keyboard Shortcuts
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">

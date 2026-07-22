@@ -87,7 +87,7 @@ function layout(data: GraphData): { nodes: Node[]; edges: Edge[] } {
     type: 'smoothstep',
     style: { stroke: 'rgba(148,163,184,0.35)', strokeWidth: 1.25 },
     labelStyle: { fontSize: 9, fill: 'rgba(226,232,240,0.6)' },
-    labelBgStyle: { fill: 'rgba(13,21,38,0.9)' },
+    labelBgStyle: { fill: 'hsl(var(--card))' },
     labelBgPadding: [2, 3] as [number, number],
     markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'rgba(148,163,184,0.45)' },
   } as Edge));
@@ -133,12 +133,12 @@ export default function LinkGraph({ data, onSelectSession, onSelectActor, onPivo
         nodesDraggable
         nodesConnectable={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1e293b" />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="hsl(var(--n-600))" />
         <Controls showInteractive={false} />
         <MiniMap
           nodeColor={(n) => ENTITY[(n.data as NodeData)?.entity?.type]?.color ?? '#64748b'}
-          maskColor="rgba(2,6,23,0.6)"
-          style={{ background: 'rgba(13,21,38,0.9)' }}
+          maskColor="hsl(var(--background) / 0.6)"
+          style={{ background: 'hsl(var(--card))' }}
         />
       </ReactFlow>
     </div>

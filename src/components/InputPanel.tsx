@@ -63,7 +63,7 @@ function SectionHeader({
       onClick={onToggle}
       className="w-full flex items-center gap-2 text-left group"
     >
-      <span className="text-cyan-400/70">{icon}</span>
+      <span className="text-muted-foreground">{icon}</span>
       <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide group-hover:text-foreground transition-colors">
         {label}
       </span>
@@ -150,7 +150,7 @@ export default function InputPanel({
         <div className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
           Target Audience
           {audience && (
-            <span className="ml-1 text-cyan-400/70 normal-case tracking-normal font-normal truncate max-w-[220px]">
+            <span className="ml-1 text-muted-foreground normal-case tracking-normal font-normal truncate max-w-[220px]">
               — {audienceHelp}
             </span>
           )}
@@ -215,7 +215,7 @@ export default function InputPanel({
         {/* Log File */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-            <FileText className="w-3 h-3 text-cyan-400/70" />
+            <FileText className="w-3 h-3 text-muted-foreground" />
             Log File
             <HelpTip text="Upload a log bundle from your EDR, firewall, or SIEM. Accepts .csv, .txt, .log, .json up to 10 MB." />
             {logFile && (

@@ -63,7 +63,7 @@ export default function IOCPivot({ type, value, onSelectSession, onClose }: Prop
       >
         <div className="px-5 py-4 border-b border-border flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
-            <Crosshair className="w-4 h-4 text-cyan-400" />
+            <Crosshair className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-foreground">Indicator correlations</h2>
