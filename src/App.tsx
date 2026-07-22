@@ -23,6 +23,7 @@ import SearchPalette from './components/SearchPalette';
 import SearchView from './components/SearchView';
 import IntelDashboard from './components/IntelDashboard';
 import { getDefaultView } from './lib/prefs';
+import { buildHash, parseHash, viewPart, sameView, type NavState, type ModalKind } from './lib/nav';
 import type { AnalysisResult, AudienceType, Session, CustomAudience, ThreatActorSummary } from './types';
 import * as api from './lib/api';
 
@@ -155,6 +156,17 @@ function AppMain() {
   const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
 
+  // ── Browser-history navigation ────────────────────────────────────────────
+  // navRef mirrors the currently-applied view; navLock suppresses history pushes
+  // while a popstate (Back/Forward) is being applied. pushNav records a new view.
+  const navRef = useRef<NavState>({ view: 'home' });
+  const navLock = useRef(false);
+  const pushNav = useCallback((nav: NavState) => {
+    if (navLock.current) return;
+    history.pushState(nav, '', buildHash(nav));
+    navRef.current = nav;
+  }, []);
+
   // Toast state
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -230,11 +242,6 @@ function AppMain() {
     loadCases();
   }, [loadSessions, loadCustomAudiences, loadThreatActors, loadAllTags, loadCases]);
 
-  // Open the Intelligence dashboard on load when it's the analyst's default view.
-  useEffect(() => {
-    if (getDefaultView() === 'intel') setIntelOpen(true);
-  }, []);
-
   // Keep ref in sync for debounce callback
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -260,8 +267,12 @@ function AppMain() {
   }, []);
 
   const handleNewSession = () => {
+    pushNav({ view: 'home' });
     setActiveSessionId(null);
     setActiveThreatActorId(null);
+    setActiveCaseId(null);
+    setSearchOpen(false);
+    setIntelOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -276,6 +287,7 @@ function AppMain() {
   };
 
   const handleSelectSession = async (id: string) => {
+    pushNav({ view: 'session', id });
     setActiveSessionId(id);
     setActiveThreatActorId(null);
     setActiveCaseId(null);
@@ -594,6 +606,7 @@ function AppMain() {
   }, [activeSessionId, loadThreatActors, loadSessions]);
 
   const handleSelectThreatActor = useCallback((id: string) => {
+    pushNav({ view: 'actor', id });
     setActiveThreatActorId(id);
     setActiveCaseId(null);
     setActiveSessionId(null);
@@ -604,9 +617,10 @@ function AppMain() {
     setStatusMessage('');
     setError(null);
     setAnalystNote('');
-  }, []);
+  }, [pushNav]);
 
   const handleSelectCase = useCallback((id: string) => {
+    pushNav({ view: 'case', id });
     setActiveCaseId(id);
     setActiveThreatActorId(null);
     setActiveSessionId(null);
@@ -617,7 +631,7 @@ function AppMain() {
     setStatusMessage('');
     setError(null);
     setAnalystNote('');
-  }, []);
+  }, [pushNav]);
 
   const handleNewCase = useCallback(async () => {
     const name = window.prompt('New case name:')?.trim();
@@ -632,6 +646,7 @@ function AppMain() {
   }, [loadCases, handleSelectCase]);
 
   const handleOpenSearchView = useCallback((q = '') => {
+    pushNav({ view: 'search', seed: q || undefined });
     setSearchSeed(q);
     setSearchOpen(true);
     setIntelOpen(false);
@@ -639,16 +654,75 @@ function AppMain() {
     setActiveSessionId(null);
     setActiveThreatActorId(null);
     setActiveCaseId(null);
-  }, []);
+  }, [pushNav]);
 
   const handleOpenIntel = useCallback(() => {
+    pushNav({ view: 'intel' });
     setIntelOpen(true);
     setSearchOpen(false);
     setSearchPaletteOpen(false);
     setActiveSessionId(null);
     setActiveThreatActorId(null);
     setActiveCaseId(null);
+  }, [pushNav]);
+
+  // ── Apply a NavState (from popstate / initial load) to the UI ───────────────
+  // Latest view handlers, read by applyNav so it doesn't depend on their identity.
+  const navHandlersRef = useRef({ handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleNewSession });
+  navHandlersRef.current = { handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleNewSession };
+
+  const applyNav = useCallback((nav: NavState) => {
+    navLock.current = true;
+    try {
+      if (!sameView(navRef.current, nav)) {
+        const h = navHandlersRef.current;
+        switch (nav.view) {
+          case 'session': if (nav.id) void h.handleSelectSession(nav.id); break;
+          case 'actor':   if (nav.id) h.handleSelectThreatActor(nav.id); break;
+          case 'case':    if (nav.id) h.handleSelectCase(nav.id); break;
+          case 'search':  h.handleOpenSearchView(nav.seed ?? ''); break;
+          case 'intel':   h.handleOpenIntel(); break;
+          default:        h.handleNewSession(); break;
+        }
+      }
+      // Modals are part of the nav so Back closes them; open the target, close the rest.
+      setSettingsOpen(nav.modal === 'settings');
+      setReportsOpen(nav.modal === 'reports');
+      setHelpOpen(nav.modal === 'help');
+      setChangePasswordOpen(nav.modal === 'changePassword');
+      setAdminOpen(nav.modal === 'admin');
+      navRef.current = nav;
+    } finally {
+      navLock.current = false;
+    }
   }, []);
+
+  const openModal = useCallback((modal: ModalKind) => {
+    const nav: NavState = { ...viewPart(navRef.current), modal };
+    history.pushState(nav, '', buildHash(nav));
+    navRef.current = nav;
+    setSettingsOpen(modal === 'settings');
+    setReportsOpen(modal === 'reports');
+    setHelpOpen(modal === 'help');
+    setChangePasswordOpen(modal === 'changePassword');
+    setAdminOpen(modal === 'admin');
+  }, []);
+  const closeModal = useCallback(() => { history.back(); }, []);
+
+  // Seed history from the URL hash (deep-link) or the default-view pref, and keep
+  // React state in sync with the browser Back/Forward buttons.
+  useEffect(() => {
+    const fromHash = parseHash(window.location.hash);
+    const initial: NavState = fromHash.view !== 'home'
+      ? fromHash
+      : (getDefaultView() === 'intel' ? { view: 'intel' } : { view: 'home' });
+    applyNav(initial);
+    history.replaceState(initial, '', buildHash(initial));
+    navRef.current = initial;
+    const onPop = (e: PopStateEvent) => applyNav((e.state as NavState) ?? parseHash(window.location.hash));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [applyNav]);
 
   // ── Cmd/Ctrl+K global search (works even inside inputs) ─────────────────
   useEffect(() => {
@@ -670,11 +744,7 @@ function AppMain() {
         { key: '?', shift: true, description: 'Shortcuts help', action: () => setShortcutsOpen((v) => !v) },
         { key: 's', description: 'Toggle sidebar', action: () => setSidebarCollapsed((v) => !v) },
         { key: 'Escape', description: 'Close modals', action: () => {
-          setSettingsOpen(false);
-          setReportsOpen(false);
-          setHelpOpen(false);
-          setChangePasswordOpen(false);
-          setAdminOpen(false);
+          if (settingsOpen || reportsOpen || helpOpen || changePasswordOpen || adminOpen) closeModal();
           setShortcutsOpen(false);
         }},
         ...Array.from({ length: 9 }, (_, i) => ({
@@ -683,7 +753,7 @@ function AppMain() {
           action: () => { if (sessions[i]) handleSelectSession(sessions[i].id); },
         })),
       ],
-      [handleNewSession, handleSelectSession, sessions],
+      [handleNewSession, handleSelectSession, sessions, closeModal, settingsOpen, reportsOpen, helpOpen, changePasswordOpen, adminOpen],
     ),
   );
 
@@ -696,16 +766,16 @@ function AppMain() {
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
           onWriteReport={handleWriteReport}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenReports={() => setReportsOpen(true)}
-          onOpenHelp={() => setHelpOpen(true)}
+          onOpenSettings={() => openModal('settings')}
+          onOpenReports={() => openModal('reports')}
+          onOpenHelp={() => openModal('help')}
           onDeleteSession={handleDeleteSession}
           onRenameSession={handleRenameSession}
           loading={isAnalyzing}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-          onOpenChangePassword={() => setChangePasswordOpen(true)}
-          onOpenAdmin={() => setAdminOpen(true)}
+          onOpenChangePassword={() => openModal('changePassword')}
+          onOpenAdmin={() => openModal('admin')}
           onSearchSessions={loadSessions}
           onBulkDelete={handleBulkDelete}
           allTags={allTags}
@@ -812,7 +882,7 @@ function AppMain() {
 
         <SettingsModal
           open={settingsOpen}
-          onClose={() => { setSettingsOpen(false); loadCustomAudiences(); }}
+          onClose={() => { closeModal(); loadCustomAudiences(); }}
           onOpenEmailStudio={() => setBrandingStudioOpen(true)}
         />
         {brandingStudioOpen && (
@@ -829,14 +899,14 @@ function AppMain() {
         )}
         <ReportsModal
           open={reportsOpen}
-          onClose={() => setReportsOpen(false)}
+          onClose={() => closeModal()}
           onSelectSession={handleSelectSession}
           onDeleteSession={handleDeleteSession}
           onRestoreSession={handleRestoreSession}
         />
-        <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-        <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
-        <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
+        <HelpModal open={helpOpen} onClose={() => closeModal()} />
+        <ChangePasswordModal open={changePasswordOpen} onClose={() => closeModal()} />
+        <AdminPanel open={adminOpen} onClose={() => closeModal()} />
 
         <SearchPalette
           open={searchPaletteOpen}
