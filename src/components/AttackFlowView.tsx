@@ -185,11 +185,11 @@ function layout(flow: AttackFlow): { nodes: Node[]; edges: Edge[]; chainLookup: 
         label: e.label,
         type: 'smoothstep',
         animated: backbone,
-        style: { stroke: backbone ? 'rgba(34,211,238,0.55)' : 'rgba(148,163,184,0.4)', strokeWidth: 1.5 },
+        style: { stroke: backbone ? 'rgba(63,131,230,0.55)' : 'rgba(148,163,184,0.4)', strokeWidth: 1.5 },
         labelStyle: { fontSize: 10, fill: 'rgba(226,232,240,0.75)' },
         labelBgStyle: { fill: 'rgba(13,21,38,0.9)' },
         labelBgPadding: [3, 4] as [number, number],
-        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: backbone ? 'rgba(34,211,238,0.6)' : 'rgba(148,163,184,0.5)' },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: backbone ? 'rgba(63,131,230,0.6)' : 'rgba(148,163,184,0.5)' },
       } as Edge;
     }),
   };

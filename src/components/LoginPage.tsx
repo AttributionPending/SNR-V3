@@ -32,10 +32,9 @@ export default function LoginPage() {
           <svg viewBox="0 0 520 120" className="w-64 h-auto mb-2" aria-label="SNR — Signal to Noise">
             <defs>
               <linearGradient id="loginLogoGrad" x1="0%" y1="50%" x2="100%" y2="50%">
-                <stop offset="0%" stopColor="#2563eb"/>
-                <stop offset="35%" stopColor="#06b6d4"/>
-                <stop offset="70%" stopColor="#22d3ee"/>
-                <stop offset="100%" stopColor="#34d399"/>
+                <stop offset="0%" stopColor="#8fb6f2"/>
+                <stop offset="40%" stopColor="#6a9cec"/>
+                <stop offset="100%" stopColor="#3f83e6"/>
               </linearGradient>
             </defs>
             {/* Waveform */}

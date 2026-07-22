@@ -9,6 +9,7 @@ import { BarChart2, X as XIcon, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatTimestamp } from '@/lib/utils';
 import * as api from '@/lib/api';
+import { useTheme } from '@/lib/theme';
 import type { AnalyticsData, TechniqueEntry } from '@/lib/api';
 
 // ── Color constants ───────────────────────────────────────────────────────────
@@ -23,10 +24,10 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 const IOC_COLORS: Record<string, string> = {
-  ipv4:       '#22d3ee',
-  ipv6:       '#67e8f9',
-  domain:     '#06b6d4',
-  url:        '#0891b2',
+  ipv4:       '#3f83e6',
+  ipv6:       '#8fb6f2',
+  domain:     '#2f66c4',
+  url:        '#274f9c',
   email:      '#0e7490',
   sha256:     '#fb923c',
   md5:        '#fdba74',
@@ -37,7 +38,7 @@ const IOC_COLORS: Record<string, string> = {
 };
 
 const AUDIENCE_COLORS: Record<string, string> = {
-  soc:         '#22d3ee',
+  soc:         '#3f83e6',
   purple_team: '#a78bfa',
   red_team:    '#f87171',
   dr:          '#34d399',
@@ -54,7 +55,7 @@ const EXPORT_COLORS: Record<string, string> = {
 };
 
 const TOOLTIP_STYLE: React.CSSProperties = {
-  background: '#0d1526',
+  background: '#161922',
   border: '1px solid #1e293b',
   borderRadius: 6,
   fontSize: 11,
@@ -229,6 +230,13 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
   const [timeRange, setTimeRange] = useState<TimeRange>(30);
   const [selectedTechnique, setSelectedTechnique] = useState<TechniqueEntry | null>(null);
 
+  // Theme-aware chart structural colors (grid/axis/tooltip) so charts flip.
+  const { theme } = useTheme();
+  const chart = theme === 'dark'
+    ? { grid: '#2a2f3a', tick: '#8b9096', tipBg: '#161922', tipBorder: '#2a2f3a', tipText: '#e6e8eb', dot: '#161922' }
+    : { grid: '#e4e8ec', tick: '#6b7280', tipBg: '#ffffff', tipBorder: '#dfe3e8', tipText: '#1f2937', dot: '#ffffff' };
+  const tooltipStyle: React.CSSProperties = { ...TOOLTIP_STYLE, background: chart.tipBg, border: `1px solid ${chart.tipBorder}`, color: chart.tipText };
+
   useEffect(() => {
     if (!open) return;
     setLoading(true);
@@ -327,40 +335,40 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                     <AreaChart data={filledData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
                       <defs>
                         <linearGradient id="sessionGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#22d3ee" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.02} />
+                          <stop offset="5%"  stopColor="#3f83e6" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#3f83e6" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="#1e2d4a" strokeDasharray="3 3" vertical={false} />
+                      <CartesianGrid stroke={chart.grid} strokeDasharray="3 3" vertical={false} />
                       <XAxis
                         dataKey="date"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickFormatter={formatDateTick}
                         interval={xInterval}
                         tickLine={false}
                         axisLine={false}
                       />
                       <YAxis
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         allowDecimals={false}
                         tickLine={false}
                         axisLine={false}
                       />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                        contentStyle={tooltipStyle}
                         labelStyle={{ color: '#e2e8f0', marginBottom: 4 }}
-                        itemStyle={{ color: '#22d3ee' }}
+                        itemStyle={{ color: '#3f83e6' }}
                         labelFormatter={(l) => formatDateTick(l as string)}
                         formatter={(v) => [v, 'Sessions']}
                       />
                       <Area
                         type="monotone"
                         dataKey="count"
-                        stroke="#22d3ee"
+                        stroke="#3f83e6"
                         strokeWidth={2}
                         fill="url(#sessionGradient)"
                         dot={false}
-                        activeDot={{ r: 3, fill: '#22d3ee', stroke: '#0d1526', strokeWidth: 2 }}
+                        activeDot={{ r: 3, fill: '#3f83e6', stroke: chart.dot, strokeWidth: 2 }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -392,7 +400,7 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                           ))}
                         </Pie>
                         <Tooltip
-                          contentStyle={TOOLTIP_STYLE}
+                          contentStyle={tooltipStyle}
                           itemStyle={{ color: '#e2e8f0' }}
                           formatter={(v, n) => [v, n]}
                         />
@@ -421,10 +429,10 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={iocData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 4 }}>
-                      <CartesianGrid stroke="#1e2d4a" horizontal={false} />
+                      <CartesianGrid stroke={chart.grid} horizontal={false} />
                       <XAxis
                         type="number"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         allowDecimals={false}
@@ -432,13 +440,13 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                       <YAxis
                         type="category"
                         dataKey="label"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         width={72}
                       />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                        contentStyle={tooltipStyle}
                         itemStyle={{ color: '#e2e8f0' }}
                         cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                         formatter={(v) => [v, 'IOCs']}
@@ -460,10 +468,10 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={audienceData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 4 }}>
-                      <CartesianGrid stroke="#1e2d4a" horizontal={false} />
+                      <CartesianGrid stroke={chart.grid} horizontal={false} />
                       <XAxis
                         type="number"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         allowDecimals={false}
@@ -471,13 +479,13 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                       <YAxis
                         type="category"
                         dataKey="label"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         width={82}
                       />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                        contentStyle={tooltipStyle}
                         itemStyle={{ color: '#e2e8f0' }}
                         cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                         formatter={(v) => [v, 'Sessions']}
@@ -503,10 +511,10 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={exportData} layout="vertical" margin={{ top: 0, right: 24, bottom: 0, left: 4 }}>
-                      <CartesianGrid stroke="#1e2d4a" horizontal={false} />
+                      <CartesianGrid stroke={chart.grid} horizontal={false} />
                       <XAxis
                         type="number"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         allowDecimals={false}
@@ -514,13 +522,13 @@ export default function AnalyticsTab({ open, onSelectSession, onClose }: Props) 
                       <YAxis
                         type="category"
                         dataKey="label"
-                        tick={{ fill: '#64748b', fontSize: 9 }}
+                        tick={{ fill: chart.tick, fontSize: 9 }}
                         tickLine={false}
                         axisLine={false}
                         width={72}
                       />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                        contentStyle={tooltipStyle}
                         itemStyle={{ color: '#e2e8f0' }}
                         cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                         formatter={(v) => [v, 'Exports']}

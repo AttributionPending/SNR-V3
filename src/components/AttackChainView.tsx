@@ -150,9 +150,9 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
         data: { label: tactic },
         style: {
           background: '#111c33',
-          border: '1px solid #22d3ee33',
+          border: '1px solid #3f83e633',
           borderRadius: 6,
-          color: '#22d3ee',
+          color: '#3f83e6',
           fontSize: 10,
           fontWeight: 700,
           textTransform: 'uppercase',
@@ -199,7 +199,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
           source: `tech-${src.tactic}-${src.technique_id}-${Array.from(tacticGroups.get(src.tactic) ?? []).indexOf(src)}`,
           target: `tech-${tgt.tactic}-${tgt.technique_id}-${Array.from(tacticGroups.get(tgt.tactic) ?? []).indexOf(tgt)}`,
           animated: true,
-          style: { stroke: '#22d3ee55', strokeWidth: 1.5 },
+          style: { stroke: '#3f83e655', strokeWidth: 1.5 },
           type: 'smoothstep',
         });
       }
@@ -337,7 +337,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
         await new Promise<void>((r) => setTimeout(r, 500));
 
         const dataUrl = await toPng(el, {
-          backgroundColor: '#0d1526',
+          backgroundColor: '#161922',
           skipFonts: true,
           pixelRatio: 2,
           width: captureW,
@@ -383,7 +383,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
         proOptions={{ hideAttribution: true }}
         onInit={setRfInstance}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e2d4a" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2f3a" />
         <Controls showInteractive={false} />
         <MiniMap
           nodeColor={(n) => {
@@ -392,7 +392,7 @@ export default function AttackChainView({ techniques, onSelectTechnique, onRegis
             return tech ? (CONFIDENCE_COLORS[tech.confidence] ?? '#888') : '#888';
           }}
           maskColor="rgba(7,13,26,0.7)"
-          style={{ background: '#0d1526' }}
+          style={{ background: '#161922' }}
         />
       </ReactFlow>
       {/* Legend */}

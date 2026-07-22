@@ -41,16 +41,28 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Neutral scale, driven by CSS vars so navy-* classes flip light/dark.
         navy: {
-          950: '#020817',
-          900: '#0a0f1e',
-          800: '#0d1526',
-          700: '#111c33',
-          600: '#162040',
+          950: 'hsl(var(--n-950) / <alpha-value>)',
+          900: 'hsl(var(--n-900) / <alpha-value>)',
+          800: 'hsl(var(--n-800) / <alpha-value>)',
+          700: 'hsl(var(--n-700) / <alpha-value>)',
+          600: 'hsl(var(--n-600) / <alpha-value>)',
         },
+        // Accent scale (restrained professional blue), driven by CSS vars so
+        // cyan-* classes flip light/dark. Full 50–950 so every used shade maps.
         cyan: {
-          400: '#22d3ee',
-          500: '#06b6d4',
+          50:  'hsl(var(--a-50) / <alpha-value>)',
+          100: 'hsl(var(--a-100) / <alpha-value>)',
+          200: 'hsl(var(--a-200) / <alpha-value>)',
+          300: 'hsl(var(--a-300) / <alpha-value>)',
+          400: 'hsl(var(--a-400) / <alpha-value>)',
+          500: 'hsl(var(--a-500) / <alpha-value>)',
+          600: 'hsl(var(--a-600) / <alpha-value>)',
+          700: 'hsl(var(--a-700) / <alpha-value>)',
+          800: 'hsl(var(--a-800) / <alpha-value>)',
+          900: 'hsl(var(--a-900) / <alpha-value>)',
+          950: 'hsl(var(--a-950) / <alpha-value>)',
         },
       },
       borderRadius: {

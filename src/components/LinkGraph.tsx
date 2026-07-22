@@ -18,7 +18,7 @@ import type { GraphData, GraphNode } from '@/lib/api';
 
 const ENTITY: Record<GraphNode['type'], { color: string; icon: typeof Shield; label: string }> = {
   case:    { color: '#8b5cf6', icon: Folder,    label: 'Case' },
-  session: { color: '#22d3ee', icon: FileText,  label: 'Incident' },
+  session: { color: '#8b93a3', icon: FileText,  label: 'Incident' },
   actor:   { color: '#ef4444', icon: Shield,    label: 'Actor' },
   ioc:     { color: '#f59e0b', icon: Crosshair, label: 'Indicator' },
   malware: { color: '#ec4899', icon: Bug,       label: 'Malware' },

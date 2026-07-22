@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Settings, Mail, User, Building2, ChevronDown, ChevronRight, Info, Brain, Users, Eye, Code2, Pencil, Plus, Trash2, FileText, LayoutList, Server, GitPullRequest, Sparkles } from 'lucide-react';
+import { X, Save, Settings, Mail, User, Building2, ChevronDown, ChevronRight, Info, Brain, Users, Eye, Code2, Pencil, Plus, Trash2, FileText, LayoutList, Server, GitPullRequest, Sparkles, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/lib/theme';
 import ReportTemplateEditor from './ReportTemplateEditor';
 import SectionsEditor from './SectionsEditor';
 import ConfirmDialog from './ConfirmDialog';
@@ -144,6 +145,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [openSection, setOpenSection] = useState<Section | null>('identity');
+  const { theme, setTheme } = useTheme();
   const [showFullPrompt, setShowFullPrompt] = useState<string | null>(null);
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
   const [addingAudience, setAddingAudience] = useState(false);
@@ -282,6 +284,29 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading settings…</div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-3">
+
+            {/* ── Appearance ── */}
+            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 px-4 py-3">
+              <div>
+                <div className="text-xs font-semibold text-foreground">Appearance</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Choose a light or dark interface theme.</div>
+              </div>
+              <div className="flex items-center gap-0.5 bg-secondary/60 rounded-md p-0.5">
+                {([['light', 'Light', Sun], ['dark', 'Dark', Moon]] as const).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    onClick={() => setTheme(value)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors',
+                      theme === value ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* ── LLM Provider ── */}
             <Accordion

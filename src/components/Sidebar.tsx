@@ -15,9 +15,9 @@ function WaveformIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 512 512" className={className}>
       <defs>
         <linearGradient id="sidebarWaveGrad" x1="0%" y1="50%" x2="100%" y2="50%">
-          <stop offset="0%" stopColor="#2563eb"/>
-          <stop offset="40%" stopColor="#06b6d4"/>
-          <stop offset="100%" stopColor="#34d399"/>
+          <stop offset="0%" stopColor="#8fb6f2"/>
+          <stop offset="40%" stopColor="#6a9cec"/>
+          <stop offset="100%" stopColor="#3f83e6"/>
         </linearGradient>
       </defs>
       <path d="M 60 256 Q 100 256 130 200 Q 160 140 190 180 Q 210 210 230 100 L 260 380 Q 280 440 300 300 Q 320 200 350 230 Q 380 260 410 240 L 452 256" fill="none" stroke="url(#sidebarWaveGrad)" strokeWidth="32" strokeLinecap="round" strokeLinejoin="round"/>

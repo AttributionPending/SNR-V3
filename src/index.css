@@ -3,27 +3,87 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light theme (default :root). The neutral (n-scale) and accent (a-scale)
+     back the navy and cyan utility classes via tailwind.config, so fixed
+     utility usages re-theme along with the shadcn tokens. */
   :root {
-    --background: 222 47% 6%;
-    --foreground: 213 31% 91%;
-    --card: 222 40% 10%;
-    --card-foreground: 213 31% 91%;
-    --popover: 222 40% 10%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 188 94% 48%;
-    --primary-foreground: 222 47% 6%;
-    --secondary: 222 30% 16%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 222 30% 14%;
-    --muted-foreground: 215 20% 55%;
-    --accent: 188 94% 40%;
-    --accent-foreground: 213 31% 91%;
+    /* Soft, low-glare light theme: off-white gray canvas, near-white cards a
+       step above it, soft-dark slate text (not pure black), muted borders. */
+    --background: 220 18% 96%;
+    --foreground: 218 15% 26%;
+    --card: 220 26% 99%;
+    --card-foreground: 218 15% 26%;
+    --popover: 220 26% 99%;
+    --popover-foreground: 218 15% 26%;
+    --primary: 217 72% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 216 16% 91%;
+    --secondary-foreground: 218 15% 30%;
+    --muted: 216 16% 92%;
+    --muted-foreground: 218 10% 46%;
+    --accent: 217 70% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 66% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 216 15% 86%;
+    --input: 216 15% 88%;
+    --ring: 217 76% 56%;
+    --radius: 0.5rem;
+    --n-950: 0 0% 100%;
+    --n-900: 220 24% 98%;
+    --n-800: 220 20% 96%;
+    --n-700: 216 16% 93%;
+    --n-600: 216 14% 85%;
+    --a-50: 214 84% 96%;
+    --a-100: 214 78% 92%;
+    --a-200: 214 70% 86%;
+    --a-300: 216 62% 68%;
+    --a-400: 217 62% 56%;
+    --a-500: 218 68% 50%;
+    --a-600: 219 68% 44%;
+    --a-700: 220 66% 37%;
+    --a-800: 221 62% 31%;
+    --a-900: 222 58% 26%;
+    --a-950: 223 54% 19%;
+  }
+
+  /* Dark theme (refined neutral base + soft-blue accent). */
+  .dark {
+    --background: 216 12% 10%;
+    --foreground: 210 12% 91%;
+    --card: 216 10% 13%;
+    --card-foreground: 210 12% 91%;
+    --popover: 216 10% 13%;
+    --popover-foreground: 210 12% 91%;
+    --primary: 217 80% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 216 8% 18%;
+    --secondary-foreground: 210 12% 91%;
+    --muted: 216 8% 16%;
+    --muted-foreground: 214 7% 62%;
+    --accent: 217 78% 52%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 63% 50%;
     --destructive-foreground: 213 31% 91%;
-    --border: 222 30% 18%;
-    --input: 222 30% 16%;
-    --ring: 188 94% 48%;
-    --radius: 0.5rem;
+    --border: 216 8% 21%;
+    --input: 216 8% 19%;
+    --ring: 217 82% 60%;
+    --n-950: 216 16% 6%;
+    --n-900: 216 12% 10%;
+    --n-800: 216 10% 13%;
+    --n-700: 216 9% 17%;
+    --n-600: 216 8% 24%;
+    --a-50: 214 90% 96%;
+    --a-100: 214 85% 90%;
+    --a-200: 214 80% 82%;
+    --a-300: 214 78% 76%;
+    --a-400: 214 78% 67%;
+    --a-500: 217 78% 58%;
+    --a-600: 217 62% 48%;
+    --a-700: 217 60% 40%;
+    --a-800: 217 55% 32%;
+    --a-900: 217 50% 26%;
+    --a-950: 217 45% 18%;
   }
 }
 
@@ -58,7 +118,7 @@
   font-size: 13px;
   line-height: 1.7;
   color: hsl(var(--foreground));
-  caret-color: #22d3ee;
+  caret-color: hsl(var(--a-500));
 }
 .snr-editor-content:focus { outline: none; }
 
@@ -118,55 +178,55 @@
 
 /* Token chip decorations */
 .token-chip-field {
-  color: #22d3ee;
-  background-color: rgba(34, 211, 238, 0.12);
+  color: hsl(var(--a-500));
+  background-color: hsl(var(--a-500) / 0.12);
   border-radius: 3px;
   padding: 0 3px;
   font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
   font-size: 0.85em;
-  border: 1px solid rgba(34, 211, 238, 0.25);
+  border: 1px solid hsl(var(--a-500) / 0.25);
   white-space: nowrap;
 }
 .token-chip-block {
-  color: #fb923c;
-  background-color: rgba(251, 146, 60, 0.12);
+  color: #d97a2b;
+  background-color: rgba(251, 146, 60, 0.14);
   border-radius: 3px;
   padding: 0 3px;
   font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
   font-size: 0.85em;
-  border: 1px solid rgba(251, 146, 60, 0.25);
+  border: 1px solid rgba(251, 146, 60, 0.3);
   white-space: nowrap;
 }
 .token-chip-unknown { opacity: 0.6; border-style: dashed; }
 
-/* React Flow overrides */
+/* React Flow overrides — all theme-aware so the canvas flips with the app. */
 .react-flow__node {
   font-family: inherit;
 }
 .react-flow__edge-path {
-  stroke: #22d3ee;
+  stroke: hsl(var(--a-500));
   stroke-width: 2;
 }
 .react-flow__controls {
-  background: #0d1526;
-  border: 1px solid #1e2d4a;
+  background: hsl(var(--n-800));
+  border: 1px solid hsl(var(--n-600));
   border-radius: 6px;
 }
 .react-flow__controls-button {
-  background: #0d1526;
-  border-color: #1e2d4a;
-  color: #94a3b8;
+  background: hsl(var(--n-800));
+  border-color: hsl(var(--n-600));
+  color: hsl(var(--muted-foreground));
 }
 .react-flow__controls-button:hover {
-  background: #162040;
+  background: hsl(var(--n-700));
 }
 .react-flow__minimap {
-  background: #0d1526;
-  border: 1px solid #1e2d4a;
+  background: hsl(var(--n-800));
+  border: 1px solid hsl(var(--n-600));
   border-radius: 6px;
 }
 .react-flow__background {
-  background: #070d1a;
+  background: hsl(var(--n-950));
 }
 
 /* Email section inline markdown (compact, inherits text-xs from parent) */
@@ -177,40 +237,40 @@
 .snr-email-section ul { list-style: disc; padding-left: 1.2em; margin: 0.25em 0; }
 .snr-email-section ol { list-style: decimal; padding-left: 1.2em; margin: 0.25em 0; }
 .snr-email-section li { margin: 0.1em 0; }
-.snr-email-section code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.08); padding: 0.1em 0.3em; border-radius: 3px; }
+.snr-email-section code { font-family: monospace; font-size: 0.9em; background: hsl(var(--muted)); padding: 0.1em 0.3em; border-radius: 3px; }
 
-/* Markdown report preview styles */
+/* Markdown report preview styles — theme-aware. */
 .snr-markdown-report {
-  color: hsl(213, 31%, 91%);
+  color: hsl(var(--foreground));
   font-size: 13px;
   line-height: 1.75;
 }
 .snr-markdown-report h1 {
   font-size: 1.5em;
   font-weight: 700;
-  border-bottom: 1px solid hsl(222, 30%, 20%);
+  border-bottom: 1px solid hsl(var(--border));
   padding-bottom: 0.3em;
   margin: 1.2em 0 0.6em;
-  color: hsl(188, 94%, 60%);
+  color: hsl(var(--a-400));
 }
 .snr-markdown-report h2 {
   font-size: 1.25em;
   font-weight: 600;
   margin: 1em 0 0.5em;
-  color: hsl(213, 31%, 95%);
+  color: hsl(var(--foreground));
 }
 .snr-markdown-report h3 {
   font-size: 1.1em;
   font-weight: 600;
   margin: 0.8em 0 0.4em;
-  color: hsl(213, 31%, 85%);
+  color: hsl(var(--foreground) / 0.85);
 }
 .snr-markdown-report p {
   margin: 0.5em 0;
 }
 .snr-markdown-report hr {
   border: none;
-  border-top: 1px solid hsl(222, 30%, 20%);
+  border-top: 1px solid hsl(var(--border));
   margin: 1em 0;
 }
 .snr-markdown-report ul, .snr-markdown-report ol {
@@ -221,21 +281,21 @@
   margin: 0.25em 0;
 }
 .snr-markdown-report strong {
-  color: hsl(213, 31%, 95%);
+  color: hsl(var(--foreground));
 }
 .snr-markdown-report code {
-  background: hsl(222, 40%, 14%);
+  background: hsl(var(--secondary));
   padding: 0.15em 0.4em;
   border-radius: 3px;
   font-size: 0.9em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 .snr-markdown-report blockquote {
-  border-left: 3px solid hsl(188, 94%, 40%);
+  border-left: 3px solid hsl(var(--a-600));
   padding: 0.3em 0.8em;
   margin: 0.5em 0;
-  color: hsl(215, 20%, 65%);
-  background: hsl(222, 40%, 10%);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--card));
   border-radius: 0 4px 4px 0;
 }
 .snr-markdown-report table {
@@ -245,26 +305,26 @@
   font-size: 0.9em;
 }
 .snr-markdown-report th {
-  background: hsl(222, 40%, 14%);
+  background: hsl(var(--secondary));
   padding: 6px 10px;
   text-align: left;
   font-weight: 600;
-  border-bottom: 2px solid hsl(222, 30%, 25%);
-  color: hsl(213, 31%, 80%);
+  border-bottom: 2px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
   font-size: 0.85em;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .snr-markdown-report td {
   padding: 5px 10px;
-  border-bottom: 1px solid hsl(222, 30%, 18%);
+  border-bottom: 1px solid hsl(var(--border));
   vertical-align: top;
 }
 .snr-markdown-report tr:hover td {
-  background: hsl(222, 40%, 12%);
+  background: hsl(var(--secondary) / 0.5);
 }
 .snr-markdown-report em {
-  color: hsl(215, 20%, 65%);
+  color: hsl(var(--muted-foreground));
 }
 
 /* Streaming cursor animation */
@@ -275,5 +335,5 @@
 .streaming-cursor::after {
   content: '▋';
   animation: blink 1s step-end infinite;
-  color: #22d3ee;
+  color: hsl(var(--a-500));
 }
