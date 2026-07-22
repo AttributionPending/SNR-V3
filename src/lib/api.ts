@@ -144,11 +144,12 @@ export async function fetchIocCorrelations(sessionId: string): Promise<IocCorrel
 export interface IocIndicator { type: string; value: string; norm: string; sessionCount: number; lastSeen: number }
 
 /** Browse distinct indicators across the team with incident counts. */
-export async function listIocs(q = '', type = '', limit = 50): Promise<IocIndicator[]> {
+export async function listIocs(q = '', type = '', limit = 50, order: 'count' | 'recent' = 'count'): Promise<IocIndicator[]> {
   const qs = new URLSearchParams();
   if (q) qs.set('q', q);
   if (type) qs.set('type', type);
   qs.set('limit', String(limit));
+  if (order === 'recent') qs.set('order', 'recent');
   const res = await authFetch(`${BASE}/iocs?${qs.toString()}`);
   if (!res.ok) throw new Error('Failed to load indicators');
   const data = await res.json() as { indicators: IocIndicator[] };
@@ -249,6 +250,91 @@ export async function fetchGraph(seed: string): Promise<GraphData> {
   const res = await authFetch(`${BASE}/graph?seed=${encodeURIComponent(seed)}`);
   if (!res.ok) throw new Error('Failed to load graph');
   return res.json() as Promise<GraphData>;
+}
+
+// ── Intelligence holdings overview ────────────────────────────────────────────
+
+export interface IntelActor { id: string; name: string; session_count: number; attribution_confidence: string | null }
+export interface IntelTechnique { technique_id: string; technique_name: string; tactic: string; session_count: number }
+export interface IntelSession { id: string; name: string; severity: string | null; created_at: number }
+
+export interface IntelOverview {
+  counts: { indicators: number; actors: number; techniques: number; incidents: number; cases: number };
+  top_iocs: IocIndicator[];
+  recent_iocs: IocIndicator[];
+  top_actors: IntelActor[];
+  top_techniques: IntelTechnique[];
+  recent_sessions: IntelSession[];
+}
+
+export async function fetchIntelOverview(): Promise<IntelOverview> {
+  const res = await authFetch(`${BASE}/intel/overview`);
+  if (!res.ok) throw new Error('Failed to load intelligence overview');
+  return res.json() as Promise<IntelOverview>;
+}
+
+// Paginated, sortable holdings for a single dashboard panel.
+export type HoldingKind = 'indicators' | 'actors' | 'techniques' | 'sessions';
+export interface HoldingItemMap {
+  indicators: IocIndicator;
+  actors: IntelActor;
+  techniques: IntelTechnique;
+  sessions: IntelSession;
+}
+export async function fetchHoldings<K extends HoldingKind>(
+  kind: K, order: string, limit = 20, offset = 0,
+): Promise<{ items: HoldingItemMap[K][]; hasMore: boolean }> {
+  const qs = new URLSearchParams({ kind, order, limit: String(limit), offset: String(offset) });
+  const res = await authFetch(`${BASE}/intel/holdings?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load holdings');
+  return res.json() as Promise<{ items: HoldingItemMap[K][]; hasMore: boolean }>;
+}
+
+// ── Entity annotations (comments on IOCs / threat actors) ─────────────────────
+
+export type EntityRef =
+  | { entity_type: 'ioc'; ioc_type: string; ioc_value: string; label?: string }
+  | { entity_type: 'actor'; actor_id: string; label?: string };
+
+export interface EntityAnnotation {
+  id: string; entity_type: 'ioc' | 'actor'; entity_key: string; entity_label: string;
+  user_id: string | null; author_name: string; content: string; created_at: number; updated_at: number;
+}
+
+function entityQuery(ref: EntityRef): string {
+  const p = new URLSearchParams({ entity_type: ref.entity_type });
+  if (ref.entity_type === 'ioc') { p.set('ioc_type', ref.ioc_type); p.set('ioc_value', ref.ioc_value); }
+  else p.set('actor_id', ref.actor_id);
+  return p.toString();
+}
+
+export async function listEntityAnnotations(ref: EntityRef): Promise<EntityAnnotation[]> {
+  const res = await authFetch(`${BASE}/annotations?${entityQuery(ref)}`);
+  if (!res.ok) throw new Error('Failed to load annotations');
+  const data = await res.json() as { annotations: EntityAnnotation[] };
+  return data.annotations;
+}
+export async function addEntityAnnotation(ref: EntityRef, content: string): Promise<EntityAnnotation> {
+  const res = await authFetch(`${BASE}/annotations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...ref, content }) });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to add annotation');
+  const data = await res.json() as { annotation: EntityAnnotation };
+  return data.annotation;
+}
+export async function updateEntityAnnotation(id: string, content: string): Promise<void> {
+  const res = await authFetch(`${BASE}/annotations/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+  if (!res.ok) throw new Error('Failed to update annotation');
+}
+export async function deleteEntityAnnotation(id: string): Promise<void> {
+  const res = await authFetch(`${BASE}/annotations/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete annotation');
+}
+/** Batch annotation counts, returned aligned to the input `entities` order. */
+export async function fetchAnnotationCounts(entities: EntityRef[]): Promise<number[]> {
+  if (entities.length === 0) return [];
+  const res = await authFetch(`${BASE}/annotations/counts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entities }) });
+  if (!res.ok) return entities.map(() => 0);
+  const data = await res.json() as { counts: number[] };
+  return data.counts;
 }
 
 export async function fetchAuditLog(): Promise<AuditLogEntry[]> {

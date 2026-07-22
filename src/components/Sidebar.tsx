@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square, PenLine, Folder } from 'lucide-react'
+import { Plus, Clock, Settings, Search, X, BarChart2, Trash2, ChevronLeft, ChevronRight, HelpCircle, LogOut, User, ChevronDown, Key, Users, Shield, Tag, Pencil, CheckSquare, Square, PenLine, Folder, Boxes } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
@@ -51,6 +51,8 @@ interface SidebarProps {
   onSelectThreatActor: (id: string) => void;
   onClearThreatActor: () => void;
   onOpenSearch?: () => void;
+  onOpenIntel?: () => void;
+  intelActive?: boolean;
   onActorAssigned?: () => void;
   cases: CaseSummary[];
   activeCaseId: string | null;
@@ -66,7 +68,7 @@ const severityVariant = (s: string | null): 'critical' | 'high' | 'medium' | 'lo
   return map[s ?? ''] ?? 'secondary';
 };
 
-export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onWriteReport, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onActorAssigned, cases, activeCaseId, onSelectCase, onClearCase, onNewCase }: SidebarProps) {
+export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onWriteReport, onOpenSettings, onOpenReports, onOpenHelp, onDeleteSession, onRenameSession, loading, collapsed, onToggleCollapse, onOpenChangePassword, onOpenAdmin, onSearchSessions, onBulkDelete, allTags, activeTagFilters, onUpdateSessionTags, threatActors, activeThreatActorId, onSelectThreatActor, onClearThreatActor, onOpenSearch, onOpenIntel, intelActive, onActorAssigned, cases, activeCaseId, onSelectCase, onClearCase, onNewCase }: SidebarProps) {
   const { user, teams, activeTeamId, switchTeam, logout, isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState<'sessions' | 'cases' | 'actors'>('sessions');
 
@@ -403,6 +405,24 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
           </button>
         )}
       </div>
+
+      {/* Intelligence dashboard */}
+      {onOpenIntel && (
+        <div className="px-3 pt-2 pb-1.5">
+          <button
+            onClick={onOpenIntel}
+            className={cn(
+              'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-colors text-left',
+              intelActive
+                ? 'bg-primary/15 border-primary/40 text-foreground'
+                : 'bg-secondary/40 border-border hover:bg-secondary/60 hover:border-border/80 text-muted-foreground'
+            )}
+          >
+            <Boxes className={cn('w-3.5 h-3.5', intelActive ? 'text-primary' : 'text-muted-foreground/60')} />
+            <span className="text-[11px] font-medium flex-1">Intelligence</span>
+          </button>
+        </div>
+      )}
 
       {/* Global Intelligence Search */}
       {onOpenSearch && (

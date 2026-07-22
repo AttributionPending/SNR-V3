@@ -13,6 +13,8 @@ interface SearchPaletteProps {
   onClose: () => void;
   onSelectSession: (id: string) => void;
   onSelectThreatActor: (id: string) => void;
+  /** Hand off to the full Intelligence Search workspace with the current query. */
+  onOpenFullSearch?: (query: string) => void;
 }
 
 const CATEGORY_CONFIG: Record<SearchHit['category'], {
@@ -28,7 +30,7 @@ const CATEGORY_CONFIG: Record<SearchHit['category'], {
   asset: { label: 'Asset', icon: Server, color: 'text-purple-400', bgColor: 'bg-purple-500/15' },
 };
 
-export default function SearchPalette({ open, onClose, onSelectSession, onSelectThreatActor }: SearchPaletteProps) {
+export default function SearchPalette({ open, onClose, onSelectSession, onSelectThreatActor, onOpenFullSearch }: SearchPaletteProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[]>([]);
   const [total, setTotal] = useState(0);
@@ -329,6 +331,17 @@ export default function SearchPalette({ open, onClose, onSelectSession, onSelect
             );
           })}
         </div>
+
+        {/* Open in full Search workspace */}
+        {query.trim().length >= 2 && onOpenFullSearch && (
+          <button
+            onClick={() => { onOpenFullSearch(query.trim()); onClose(); }}
+            className="w-full px-4 py-2 border-t border-border text-left text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary/40 flex items-center gap-1.5 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Open “{query.trim()}” in Search — comment &amp; pivot to cases
+          </button>
+        )}
 
         {/* Footer */}
         {results.length > 0 && (

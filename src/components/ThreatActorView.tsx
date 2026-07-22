@@ -11,6 +11,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import ConfirmDialog from './ConfirmDialog';
+import EntityAnnotations from './EntityAnnotations';
 import { cn, formatTimestamp, severityDot } from '@/lib/utils';
 import * as api from '@/lib/api';
 import type { ThreatActorDetail, ThreatActorSummary, AggregatedTTP } from '@/types';
@@ -524,6 +525,11 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
             <p className="text-xs text-muted-foreground/60 mt-1">Link sessions manually, or run an analysis that attributes this actor.</p>
           </div>
         )}
+
+        {/* Comments */}
+        <div className="mt-4 pt-4 border-t border-border">
+          <EntityAnnotations entityType="actor" actorId={actorId} label={detail.name} />
+        </div>
       </div>
 
       {/* Merge Modal */}

@@ -24,6 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
   const q = ((req.query['q'] as string) || '').trim().toLowerCase();
   const type = ((req.query['type'] as string) || '').trim();
   const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 200);
+  const order = req.query['order'] === 'recent' ? 'last_seen DESC' : 'session_count DESC, last_seen DESC';
 
   const db = getDb();
   const clauses = ["s.deleted_at IS NULL", "s.status = 'complete'", 'o.team_id = ?'];
@@ -42,7 +43,7 @@ router.get('/', async (req: Request, res: Response) => {
     JOIN sessions s ON s.id = o.session_id
     WHERE ${clauses.join(' AND ')}
     GROUP BY o.ioc_type, o.ioc_value_norm
-    ORDER BY session_count DESC, last_seen DESC
+    ORDER BY ${order}
     LIMIT ?
   `).all(...params)) as Array<{
     ioc_type: string; ioc_value: string; ioc_value_norm: string;

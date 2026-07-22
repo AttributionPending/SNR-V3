@@ -20,6 +20,9 @@ import { cn } from './lib/utils';
 import ThreatActorView from './components/ThreatActorView';
 import CaseView from './components/CaseView';
 import SearchPalette from './components/SearchPalette';
+import SearchView from './components/SearchView';
+import IntelDashboard from './components/IntelDashboard';
+import { getDefaultView } from './lib/prefs';
 import type { AnalysisResult, AudienceType, Session, CustomAudience, ThreatActorSummary } from './types';
 import * as api from './lib/api';
 
@@ -116,8 +119,11 @@ function AppMain() {
   const [cases, setCases] = useState<api.CaseSummary[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
-  // Global search palette
+  // Global search palette + full Intelligence Search workspace + dashboard
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSeed, setSearchSeed] = useState('');
+  const [intelOpen, setIntelOpen] = useState(false);
 
   // Tags
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -224,6 +230,11 @@ function AppMain() {
     loadCases();
   }, [loadSessions, loadCustomAudiences, loadThreatActors, loadAllTags, loadCases]);
 
+  // Open the Intelligence dashboard on load when it's the analyst's default view.
+  useEffect(() => {
+    if (getDefaultView() === 'intel') setIntelOpen(true);
+  }, []);
+
   // Keep ref in sync for debounce callback
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -268,6 +279,8 @@ function AppMain() {
     setActiveSessionId(id);
     setActiveThreatActorId(null);
     setActiveCaseId(null);
+    setSearchOpen(false);
+    setIntelOpen(false);
     setError(null);
     setAnalystNote('');
     setSessionTags([]);
@@ -584,6 +597,8 @@ function AppMain() {
     setActiveThreatActorId(id);
     setActiveCaseId(null);
     setActiveSessionId(null);
+    setSearchOpen(false);
+    setIntelOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -595,6 +610,8 @@ function AppMain() {
     setActiveCaseId(id);
     setActiveThreatActorId(null);
     setActiveSessionId(null);
+    setSearchOpen(false);
+    setIntelOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -613,6 +630,25 @@ function AppMain() {
       showToast('Failed to create case', 'error');
     }
   }, [loadCases, handleSelectCase]);
+
+  const handleOpenSearchView = useCallback((q = '') => {
+    setSearchSeed(q);
+    setSearchOpen(true);
+    setIntelOpen(false);
+    setSearchPaletteOpen(false);
+    setActiveSessionId(null);
+    setActiveThreatActorId(null);
+    setActiveCaseId(null);
+  }, []);
+
+  const handleOpenIntel = useCallback(() => {
+    setIntelOpen(true);
+    setSearchOpen(false);
+    setSearchPaletteOpen(false);
+    setActiveSessionId(null);
+    setActiveThreatActorId(null);
+    setActiveCaseId(null);
+  }, []);
 
   // ── Cmd/Ctrl+K global search (works even inside inputs) ─────────────────
   useEffect(() => {
@@ -684,11 +720,27 @@ function AppMain() {
           onSelectCase={handleSelectCase}
           onClearCase={() => setActiveCaseId(null)}
           onNewCase={handleNewCase}
-          onOpenSearch={() => setSearchPaletteOpen(true)}
+          onOpenSearch={() => handleOpenSearchView()}
+          onOpenIntel={handleOpenIntel}
+          intelActive={intelOpen}
           onActorAssigned={handleActorAssigned}
         />
 
-        {activeCaseId ? (
+        {intelOpen ? (
+          <IntelDashboard
+            onSelectSession={handleSelectSession}
+            onSelectThreatActor={handleSelectThreatActor}
+            onOpenSearch={handleOpenSearchView}
+          />
+        ) : searchOpen ? (
+          <SearchView
+            initialQuery={searchSeed}
+            onSelectSession={handleSelectSession}
+            onSelectThreatActor={handleSelectThreatActor}
+            onShowToast={showToast}
+            onCasesChanged={loadCases}
+          />
+        ) : activeCaseId ? (
           <CaseView
             caseId={activeCaseId}
             onSelectSession={handleSelectSession}
@@ -790,6 +842,7 @@ function AppMain() {
           onClose={() => setSearchPaletteOpen(false)}
           onSelectSession={handleSelectSession}
           onSelectThreatActor={handleSelectThreatActor}
+          onOpenFullSearch={handleOpenSearchView}
         />
         <KeyboardShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />

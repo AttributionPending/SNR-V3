@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Settings, Mail, User, Building2, ChevronDown, ChevronRight, Info, Brain, Users, Eye, Code2, Pencil, Plus, Trash2, FileText, LayoutList, Server, GitPullRequest, Sparkles, Sun, Moon } from 'lucide-react';
+import { X, Save, Settings, Mail, User, Building2, ChevronDown, ChevronRight, Info, Brain, Users, Eye, Code2, Pencil, Plus, Trash2, FileText, LayoutList, Server, GitPullRequest, Sparkles, Sun, Moon, Boxes, PenLine } from 'lucide-react';
 import { useTheme } from '@/lib/theme';
+import { getDefaultView, setDefaultView, type DefaultView } from '@/lib/prefs';
 import ReportTemplateEditor from './ReportTemplateEditor';
 import SectionsEditor from './SectionsEditor';
 import ConfirmDialog from './ConfirmDialog';
@@ -146,6 +147,7 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
   const [loading, setLoading] = useState(true);
   const [openSection, setOpenSection] = useState<Section | null>('identity');
   const { theme, setTheme } = useTheme();
+  const [defaultView, setDefaultViewState] = useState<DefaultView>(getDefaultView);
   const [showFullPrompt, setShowFullPrompt] = useState<string | null>(null);
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
   const [addingAudience, setAddingAudience] = useState(false);
@@ -299,6 +301,29 @@ export default function SettingsModal({ open, onClose, onOpenEmailStudio }: Prop
                     className={cn(
                       'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors',
                       theme === value ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Default view ── */}
+            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 px-4 py-3">
+              <div>
+                <div className="text-xs font-semibold text-foreground">Default view</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Where the app opens on sign-in.</div>
+              </div>
+              <div className="flex items-center gap-0.5 bg-secondary/60 rounded-md p-0.5">
+                {([['analysis', 'New analysis', PenLine], ['intel', 'Intelligence', Boxes]] as const).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    onClick={() => { setDefaultView(value); setDefaultViewState(value); }}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors',
+                      defaultView === value ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
                     <Icon className="w-3.5 h-3.5" />

@@ -9,6 +9,7 @@ import { X, Crosshair, FileText, UserRound, Loader2 } from 'lucide-react';
 import { fetchIocOccurrences, type IocOccurrences } from '@/lib/api';
 import { defangIoc } from '@/lib/defang';
 import { cn } from '@/lib/utils';
+import EntityAnnotations from './EntityAnnotations';
 
 interface Props {
   type: string;
@@ -135,6 +136,10 @@ export default function IOCPivot({ type, value, onSelectSession, onClose }: Prop
               )}
             </>
           )}
+
+          <div className="border-t border-border mt-4 pt-4">
+            <EntityAnnotations entityType="ioc" iocType={type} iocValue={value} label={value} />
+          </div>
         </div>
       </div>
     </div>
