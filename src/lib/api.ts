@@ -202,9 +202,9 @@ export interface CaseSummary {
   assignee: string | null; session_count: number; created_at: number; updated_at: number;
 }
 export interface CaseLinkedSession { id: string; name: string; severity: string | null; audience: string | null; created_at: number; added_at: number }
-export interface CaseAggTTP { technique_id: string; technique_name: string; tactic: string; session_count: number }
-export interface CaseAggIOC { type: string; value: string; norm: string; session_count: number; first_seen: number; last_seen: number; any_false_positive?: boolean }
-export interface CaseActor { id: string; name: string; session_count: number }
+export interface CaseAggTTP { technique_id: string; technique_name: string; tactic: string; session_count: number; pinned?: boolean }
+export interface CaseAggIOC { type: string; value: string; norm: string; session_count: number; first_seen: number | null; last_seen: number | null; any_false_positive?: boolean; pinned?: boolean; context?: string }
+export interface CaseActor { id: string; name: string; session_count: number; pinned?: boolean }
 export interface CaseLogEntry { id: string; user_id: string | null; author_name: string; entry_type: string; content: string; created_at: number }
 export interface CaseDetail {
   case: CaseSummary;
@@ -215,7 +215,7 @@ export interface CaseDetail {
   log: CaseLogEntry[];
 }
 
-export interface GraphNode { id: string; type: 'case' | 'session' | 'actor' | 'ioc' | 'malware'; label: string; meta?: Record<string, string | number | null> }
+export interface GraphNode { id: string; type: 'case' | 'session' | 'actor' | 'ioc' | 'malware' | 'technique'; label: string; meta?: Record<string, string | number | null> }
 export interface GraphData { nodes: GraphNode[]; edges: { source: string; target: string; label: string }[] }
 
 export async function fetchCases(search = ''): Promise<{ cases: CaseSummary[]; total: number }> {
@@ -266,6 +266,41 @@ export async function fetchCaseGraph(id: string): Promise<GraphData> {
   const res = await authFetch(`${BASE}/cases/${id}/graph`);
   if (!res.ok) throw new Error('Failed to load case graph');
   return res.json() as Promise<GraphData>;
+}
+
+// ── Pinned case members (actors / techniques / indicators) ────────────────────
+const jsonPost = (url: string, body: unknown) => authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+export async function pinCaseActor(id: string, ref: { actor_id?: string; name?: string }): Promise<void> {
+  const res = await jsonPost(`${BASE}/cases/${id}/actors`, ref);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to add actor');
+}
+export async function unpinCaseActor(id: string, actorId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}/actors/${actorId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to remove actor');
+}
+export async function fetchCaseAvailableActors(id: string, search = ''): Promise<Array<{ id: string; name: string }>> {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  const res = await authFetch(`${BASE}/cases/${id}/actors/available${qs}`);
+  if (!res.ok) throw new Error('Failed to load actors');
+  return (await res.json() as { actors: Array<{ id: string; name: string }> }).actors;
+}
+export async function pinCaseTechnique(id: string, t: { technique_id: string; technique_name: string; tactic: string }): Promise<void> {
+  const res = await jsonPost(`${BASE}/cases/${id}/techniques`, t);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to add technique');
+}
+export async function unpinCaseTechnique(id: string, techniqueId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/cases/${id}/techniques/${encodeURIComponent(techniqueId)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to remove technique');
+}
+export async function pinCaseIoc(id: string, ioc: { type: string; value: string; context?: string }): Promise<void> {
+  const res = await jsonPost(`${BASE}/cases/${id}/iocs`, ioc);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to add indicator');
+}
+export async function unpinCaseIoc(id: string, type: string, value: string): Promise<void> {
+  const qs = new URLSearchParams({ type, value });
+  const res = await authFetch(`${BASE}/cases/${id}/iocs?${qs.toString()}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to remove indicator');
 }
 export async function fetchGraph(seed: string): Promise<GraphData> {
   const res = await authFetch(`${BASE}/graph?seed=${encodeURIComponent(seed)}`);

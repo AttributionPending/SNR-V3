@@ -234,6 +234,48 @@ suite('sessions + brand-profiles routes', () => {
       expect((await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken))).status).toBe(404);
       expect((await request(app).get(`/api/sessions/${s1}`).set(auth(adminToken))).status).toBe(200);
     });
+
+    it('pins actors, techniques, and IOCs directly to a case and merges them', async () => {
+      const created = await request(app).post('/api/cases').set(auth(adminToken)).send({ name: 'Workbench case' });
+      const caseId = created.body.case.id as string;
+
+      // pin a brand-new actor by name, a technique, and an IOC — none from a session
+      expect((await request(app).post(`/api/cases/${caseId}/actors`).set(auth(adminToken)).send({ name: 'APT-Pinned' })).status).toBe(200);
+      expect((await request(app).post(`/api/cases/${caseId}/techniques`).set(auth(adminToken)).send({ technique_id: 'T1566', technique_name: 'Phishing', tactic: 'Initial Access' })).status).toBe(200);
+      expect((await request(app).post(`/api/cases/${caseId}/iocs`).set(auth(adminToken)).send({ type: 'ipv4', value: '198.51.100.200' })).status).toBe(200);
+
+      const detail = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      const actor = detail.body.actors.find((a: { name: string }) => a.name === 'APT-Pinned');
+      expect(actor?.pinned).toBe(true);
+      expect(actor?.session_count).toBe(0);
+      expect(detail.body.aggregated_ttps.some((t: { technique_id: string; pinned: boolean }) => t.technique_id === 'T1566' && t.pinned)).toBe(true);
+      expect(detail.body.aggregated_iocs.some((i: { value: string; pinned: boolean }) => i.value === '198.51.100.200' && i.pinned)).toBe(true);
+
+      // pinned entities appear in the case graph, wired to the case node
+      const graph = await request(app).get(`/api/cases/${caseId}/graph`).set(auth(adminToken));
+      expect(graph.body.nodes.some((n: { type: string }) => n.type === 'technique')).toBe(true);
+      expect(graph.body.edges.some((e: { label: string }) => e.label === 'tracks')).toBe(true);
+
+      // the case IOC flows into the global indicator list, flagged manual
+      const globalList = await request(app).get('/api/iocs').query({ q: '198.51.100.200' }).set(auth(adminToken));
+      const globalHit = globalList.body.indicators.find((i: { value: string }) => i.value === '198.51.100.200');
+      expect(globalHit).toBeTruthy();
+      expect(globalHit.manual).toBe(true);
+
+      // available-actor picker excludes the already-pinned actor
+      const avail = await request(app).get(`/api/cases/${caseId}/actors/available`).query({ search: 'APT-Pinned' }).set(auth(adminToken));
+      expect(avail.body.actors.some((a: { name: string }) => a.name === 'APT-Pinned')).toBe(false);
+
+      // viewer cannot pin
+      expect((await request(app).post(`/api/cases/${caseId}/iocs`).set(auth(viewerToken)).send({ type: 'ipv4', value: '10.0.0.1' })).status).toBe(403);
+
+      // unpin the IOC and technique
+      expect((await request(app).delete(`/api/cases/${caseId}/iocs`).query({ type: 'ipv4', value: '198.51.100.200' }).set(auth(adminToken))).status).toBe(200);
+      expect((await request(app).delete(`/api/cases/${caseId}/techniques/T1566`).set(auth(adminToken))).status).toBe(200);
+      const detail2 = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(detail2.body.aggregated_iocs.some((i: { value: string }) => i.value === '198.51.100.200')).toBe(false);
+      expect(detail2.body.aggregated_ttps.some((t: { technique_id: string }) => t.technique_id === 'T1566')).toBe(false);
+    });
   });
 
   describe('entity annotations', () => {

@@ -21,7 +21,7 @@ import ReactFlow, {
   type Node, type Edge, type ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Folder, FileText, Shield, Crosshair, Bug, Search, X, GitBranch, Orbit, Share2 } from 'lucide-react';
+import { Folder, FileText, Shield, Crosshair, Bug, Search, X, GitBranch, Orbit, Share2, Swords } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GraphData, GraphNode } from '@/lib/api';
 
@@ -29,13 +29,14 @@ type EntityType = GraphNode['type'];
 type LayoutMode = 'tree' | 'radial' | 'force';
 
 const ENTITY: Record<EntityType, { color: string; icon: typeof Shield; label: string }> = {
-  case:    { color: '#8b5cf6', icon: Folder,    label: 'Case' },
-  session: { color: '#8b93a3', icon: FileText,  label: 'Incident' },
-  actor:   { color: '#ef4444', icon: Shield,    label: 'Actor' },
-  ioc:     { color: '#f59e0b', icon: Crosshair, label: 'Indicator' },
-  malware: { color: '#ec4899', icon: Bug,       label: 'Malware' },
+  case:      { color: '#8b5cf6', icon: Folder,    label: 'Case' },
+  session:   { color: '#8b93a3', icon: FileText,  label: 'Incident' },
+  actor:     { color: '#ef4444', icon: Shield,    label: 'Actor' },
+  ioc:       { color: '#f59e0b', icon: Crosshair, label: 'Indicator' },
+  malware:   { color: '#ec4899', icon: Bug,       label: 'Malware' },
+  technique: { color: '#22d3ee', icon: Swords,    label: 'Technique' },
 };
-const TYPE_ORDER: EntityType[] = ['case', 'session', 'actor', 'ioc', 'malware'];
+const TYPE_ORDER: EntityType[] = ['case', 'session', 'actor', 'ioc', 'malware', 'technique'];
 
 const NODE_W = 190;
 const NODE_H = 46;

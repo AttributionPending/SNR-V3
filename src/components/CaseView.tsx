@@ -20,6 +20,11 @@ import { cn, formatTimestamp, severityDot } from '@/lib/utils';
 import { defangIoc } from '@/lib/defang';
 import * as api from '@/lib/api';
 import type { CaseDetail, CaseStatus, CasePriority, GraphData } from '@/lib/api';
+import ATTACK_TECHNIQUES from '@/data/attack-techniques.json';
+
+const IOC_TYPES = ['ipv4', 'ipv6', 'domain', 'url', 'md5', 'sha1', 'sha256', 'email', 'filename', 'registry', 'user_agent'];
+type Technique = { id: string; name: string; tactic: string };
+const ALL_TECHNIQUES = ATTACK_TECHNIQUES as Technique[];
 
 interface Props {
   caseId: string;
@@ -50,6 +55,23 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
   const [pivotIoc, setPivotIoc] = useState<{ type: string; value: string } | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+
+  // Add-member pickers (pin actors / techniques / IOCs directly to the case).
+  const [addTtp, setAddTtp] = useState(false);
+  const [ttpQuery, setTtpQuery] = useState('');
+  const [addIoc, setAddIoc] = useState(false);
+  const [iocType, setIocType] = useState('ipv4');
+  const [iocValue, setIocValue] = useState('');
+  const [addActor, setAddActor] = useState(false);
+  const [actorQuery, setActorQuery] = useState('');
+  const [actorResults, setActorResults] = useState<Array<{ id: string; name: string }>>([]);
+
+  const ttpResults = ttpQuery.trim().length >= 2
+    ? ALL_TECHNIQUES.filter((t) => {
+        const s = ttpQuery.trim().toLowerCase();
+        return t.id.toLowerCase().includes(s) || t.name.toLowerCase().includes(s);
+      }).slice(0, 15)
+    : [];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +115,25 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
     setNoteDraft('');
     await load();
   };
+
+  // Debounced available-actor search when the actor picker is open.
+  useEffect(() => {
+    if (!addActor) return;
+    const t = setTimeout(async () => {
+      try { setActorResults(await api.fetchCaseAvailableActors(caseId, actorQuery.trim())); } catch { setActorResults([]); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [addActor, actorQuery, caseId]);
+
+  const refresh = async () => { await load(); onCaseUpdated(); if (graph) void loadGraph(); };
+
+  const pinTechnique = async (t: Technique) => { await api.pinCaseTechnique(caseId, { technique_id: t.id, technique_name: t.name, tactic: t.tactic }); setTtpQuery(''); setAddTtp(false); await refresh(); };
+  const removeTechnique = async (id: string) => { await api.unpinCaseTechnique(caseId, id); await refresh(); };
+  const pinIoc = async () => { if (!iocValue.trim()) return; await api.pinCaseIoc(caseId, { type: iocType, value: iocValue.trim() }); setIocValue(''); setAddIoc(false); await refresh(); };
+  const removeIoc = async (type: string, value: string) => { await api.unpinCaseIoc(caseId, type, value); await refresh(); };
+  const pinActorExisting = async (actorId: string) => { await api.pinCaseActor(caseId, { actor_id: actorId }); setActorQuery(''); setAddActor(false); await refresh(); };
+  const pinActorNew = async (name: string) => { await api.pinCaseActor(caseId, { name }); setActorQuery(''); setAddActor(false); await refresh(); };
+  const removeActor = async (actorId: string) => { await api.unpinCaseActor(caseId, actorId); await refresh(); };
 
   if (loading) return <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mr-2" />Loading case…</div>;
   if (!detail) return <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Case not found.</div>;
@@ -246,52 +287,128 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
 
         {/* TTPs */}
         <TabsContent value="ttps" className="flex-1 overflow-y-auto px-5 py-4 mt-0 data-[state=inactive]:hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Techniques (derived + pinned)</span>
+            <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setAddTtp((v) => !v)}><Plus className="w-3 h-3" />Add technique</Button>
+          </div>
+          {addTtp && (
+            <div className="mb-3 border border-border rounded-md p-2 bg-secondary/20">
+              <div className="relative mb-2">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
+                <input autoFocus value={ttpQuery} onChange={(e) => setTtpQuery(e.target.value)} placeholder="Search ATT&CK by ID or name (e.g. T1566 or phishing)…" className="w-full bg-secondary/40 border border-border rounded pl-7 pr-2 py-1 text-xs focus:outline-none" />
+              </div>
+              <ul className="max-h-56 overflow-y-auto space-y-0.5">
+                {ttpResults.map((t) => (
+                  <li key={t.id}>
+                    <button onClick={() => void pinTechnique(t)} className="w-full flex items-center gap-2 text-left px-2 py-1 rounded hover:bg-secondary/60 text-xs">
+                      <Plus className="w-3 h-3 text-muted-foreground/50 flex-shrink-0" />
+                      <span className="font-mono text-cyan-400 flex-shrink-0">{t.id}</span>
+                      <span className="flex-1 truncate text-foreground/90">{t.name}</span>
+                      <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{t.tactic}</span>
+                    </button>
+                  </li>
+                ))}
+                {ttpQuery.trim().length >= 2 && ttpResults.length === 0 && <li className="text-xs text-muted-foreground px-2 py-1">No matching techniques.</li>}
+                {ttpQuery.trim().length < 2 && <li className="text-xs text-muted-foreground px-2 py-1">Type at least 2 characters.</li>}
+              </ul>
+            </div>
+          )}
           <table className="w-full text-xs">
-            <thead><tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground border-b border-border"><th className="py-1.5 pr-2">Technique</th><th className="py-1.5 pr-2">Tactic</th><th className="py-1.5 text-right">Sessions</th></tr></thead>
+            <thead><tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground border-b border-border"><th className="py-1.5 pr-2">Technique</th><th className="py-1.5 pr-2">Tactic</th><th className="py-1.5 text-right">Sessions</th><th className="py-1.5 w-8"></th></tr></thead>
             <tbody>
               {detail.aggregated_ttps.map((t) => (
-                <tr key={t.technique_id} className="border-b border-border/40">
-                  <td className="py-1.5 pr-2"><span className="font-mono text-cyan-400">{t.technique_id}</span> <span className="text-foreground/80">{t.technique_name}</span></td>
+                <tr key={t.technique_id} className="border-b border-border/40 group">
+                  <td className="py-1.5 pr-2"><span className="font-mono text-cyan-400">{t.technique_id}</span> <span className="text-foreground/80">{t.technique_name}</span>{t.pinned && <span className="ml-1.5 text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25">pinned</span>}</td>
                   <td className="py-1.5 pr-2 text-muted-foreground">{t.tactic}</td>
                   <td className="py-1.5 text-right text-muted-foreground">{t.session_count}</td>
+                  <td className="py-1.5 text-right">{t.pinned && <button onClick={() => void removeTechnique(t.technique_id)} className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove from case"><X className="w-3 h-3" /></button>}</td>
                 </tr>
               ))}
-              {detail.aggregated_ttps.length === 0 && <tr><td colSpan={3} className="py-3 text-muted-foreground">No techniques across linked sessions.</td></tr>}
+              {detail.aggregated_ttps.length === 0 && <tr><td colSpan={4} className="py-3 text-muted-foreground">No techniques yet — add one or link sessions.</td></tr>}
             </tbody>
           </table>
         </TabsContent>
 
         {/* IOCs */}
         <TabsContent value="iocs" className="flex-1 overflow-y-auto px-5 py-4 mt-0 data-[state=inactive]:hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Indicators (derived + pinned)</span>
+            <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setAddIoc((v) => !v)}><Plus className="w-3 h-3" />Add indicator</Button>
+          </div>
+          {addIoc && (
+            <div className="mb-3 border border-border rounded-md p-2 bg-secondary/20 flex items-center gap-2">
+              <select value={iocType} onChange={(e) => setIocType(e.target.value)} className="bg-secondary/40 border border-border rounded px-2 py-1 text-xs focus:outline-none w-28">
+                {IOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input autoFocus value={iocValue} onChange={(e) => setIocValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void pinIoc(); }} placeholder="Indicator value…" className="flex-1 bg-secondary/40 border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none" />
+              <Button size="sm" className="text-xs h-7 gap-1" onClick={() => void pinIoc()} disabled={!iocValue.trim()}><Plus className="w-3 h-3" />Add</Button>
+            </div>
+          )}
           <table className="w-full text-xs">
-            <thead><tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground border-b border-border"><th className="py-1.5 pr-2 w-20">Type</th><th className="py-1.5 pr-2">Indicator</th><th className="py-1.5 text-right w-20">Sessions</th></tr></thead>
+            <thead><tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground border-b border-border"><th className="py-1.5 pr-2 w-20">Type</th><th className="py-1.5 pr-2">Indicator</th><th className="py-1.5 text-right w-20">Sessions</th><th className="py-1.5 w-8"></th></tr></thead>
             <tbody>
               {detail.aggregated_iocs.map((i) => (
-                <tr key={`${i.type}:${i.norm}`} className={cn('border-b border-border/40 hover:bg-secondary/30 cursor-pointer', i.any_false_positive && 'opacity-50')} onClick={() => setPivotIoc({ type: i.type, value: i.value })}>
-                  <td className="py-1.5 pr-2 font-mono text-orange-400">{i.type.toUpperCase()}</td>
-                  <td className="py-1.5 pr-2 font-mono text-foreground/90 truncate max-w-[320px]">{defangIoc(i.type, i.value)}</td>
+                <tr key={`${i.type}:${i.norm}`} className={cn('border-b border-border/40 hover:bg-secondary/30 group', i.any_false_positive && 'opacity-50')}>
+                  <td className="py-1.5 pr-2 font-mono text-orange-400 cursor-pointer" onClick={() => setPivotIoc({ type: i.type, value: i.value })}>{i.type.toUpperCase()}</td>
+                  <td className="py-1.5 pr-2 font-mono text-foreground/90 truncate max-w-[320px] cursor-pointer" onClick={() => setPivotIoc({ type: i.type, value: i.value })}>{defangIoc(i.type, i.value)}{i.pinned && <span className="ml-1.5 text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25">pinned</span>}</td>
                   <td className="py-1.5 text-right"><span className="inline-flex items-center gap-1 text-cyan-300"><Crosshair className="w-2.5 h-2.5" />{i.session_count}</span></td>
+                  <td className="py-1.5 text-right">{i.pinned && <button onClick={() => void removeIoc(i.type, i.value)} className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove from case"><X className="w-3 h-3" /></button>}</td>
                 </tr>
               ))}
-              {detail.aggregated_iocs.length === 0 && <tr><td colSpan={3} className="py-3 text-muted-foreground">No indicators across linked sessions.</td></tr>}
+              {detail.aggregated_iocs.length === 0 && <tr><td colSpan={4} className="py-3 text-muted-foreground">No indicators yet — add one or link sessions.</td></tr>}
             </tbody>
           </table>
         </TabsContent>
 
         {/* Actors */}
         <TabsContent value="actors" className="flex-1 overflow-y-auto px-5 py-4 mt-0 data-[state=inactive]:hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Actors (derived + pinned)</span>
+            <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setAddActor((v) => !v)}><Plus className="w-3 h-3" />Add actor</Button>
+          </div>
+          {addActor && (
+            <div className="mb-3 border border-border rounded-md p-2 bg-secondary/20">
+              <div className="relative mb-2">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
+                <input autoFocus value={actorQuery} onChange={(e) => setActorQuery(e.target.value)} placeholder="Search actors, or type a new name…" className="w-full bg-secondary/40 border border-border rounded pl-7 pr-2 py-1 text-xs focus:outline-none" />
+              </div>
+              <ul className="max-h-48 overflow-y-auto space-y-0.5">
+                {actorResults.map((a) => (
+                  <li key={a.id}>
+                    <button onClick={() => void pinActorExisting(a.id)} className="w-full flex items-center gap-2 text-left px-2 py-1 rounded hover:bg-secondary/60 text-xs">
+                      <Shield className="w-3 h-3 text-red-400/70 flex-shrink-0" />
+                      <span className="flex-1 truncate">{a.name}</span>
+                    </button>
+                  </li>
+                ))}
+                {actorQuery.trim() && !actorResults.some((a) => a.name.toLowerCase() === actorQuery.trim().toLowerCase()) && (
+                  <li>
+                    <button onClick={() => void pinActorNew(actorQuery.trim())} className="w-full flex items-center gap-2 text-left px-2 py-1 rounded hover:bg-secondary/60 text-xs text-cyan-300">
+                      <Plus className="w-3 h-3 flex-shrink-0" />
+                      Create new actor “{actorQuery.trim()}”
+                    </button>
+                  </li>
+                )}
+                {actorResults.length === 0 && !actorQuery.trim() && <li className="text-xs text-muted-foreground px-2 py-1">Type to search existing actors.</li>}
+              </ul>
+            </div>
+          )}
           <ul className="space-y-1">
             {detail.actors.map((a) => (
-              <li key={a.id}>
-                <button onClick={() => onSelectThreatActor(a.id)} className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded hover:bg-secondary/40 text-xs">
-                  <Shield className="w-3.5 h-3.5 text-red-400/80" />
-                  <span className="flex-1 truncate text-foreground hover:text-red-300">{a.name}</span>
-                  <span className="text-[10px] text-muted-foreground/60">{a.session_count} session{a.session_count !== 1 ? 's' : ''}</span>
-                  <ExternalLink className="w-3 h-3 text-muted-foreground/40" />
+              <li key={a.id} className="flex items-center gap-2 group">
+                <button onClick={() => onSelectThreatActor(a.id)} className="flex-1 flex items-center gap-2 text-left px-2 py-1.5 rounded hover:bg-secondary/40 text-xs min-w-0">
+                  <Shield className="w-3.5 h-3.5 text-red-400/80 flex-shrink-0" />
+                  <span className="flex-1 truncate text-foreground group-hover:text-red-300">{a.name}</span>
+                  {a.pinned && <span className="text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25 flex-shrink-0">pinned</span>}
+                  <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{a.session_count} session{a.session_count !== 1 ? 's' : ''}</span>
+                  <ExternalLink className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
                 </button>
+                {a.pinned && (
+                  <button onClick={() => void removeActor(a.id)} className="text-muted-foreground/50 hover:text-red-400 px-1.5 py-1 flex-shrink-0" title="Remove from case"><X className="w-3 h-3" /></button>
+                )}
               </li>
             ))}
-            {detail.actors.length === 0 && <li className="text-xs text-muted-foreground">No attributed actors across linked sessions.</li>}
+            {detail.actors.length === 0 && <li className="text-xs text-muted-foreground">No actors yet — add one or link sessions.</li>}
           </ul>
         </TabsContent>
 

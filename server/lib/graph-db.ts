@@ -48,7 +48,18 @@ export async function buildGraphForSessions(
     fetchSessionActorRows(db, sessionIds),
     fetchSessionIocRows(db, sessionIds),
   ]);
-  return assembleGraph({ caseNode, sessions, sessionActors, sessionIocs });
+
+  // Entities pinned directly to the case (independent of any session).
+  let pinnedActors, pinnedIocs, pinnedTechniques;
+  if (caseNode) {
+    [pinnedActors, pinnedIocs, pinnedTechniques] = await Promise.all([
+      db.prepare(`SELECT ta.id, ta.name FROM case_actors ca JOIN threat_actors ta ON ta.id = ca.threat_actor_id WHERE ca.case_id = ?`).all(caseNode.id),
+      db.prepare(`SELECT ioc_type AS type, ioc_value AS value, ioc_value_norm AS norm FROM case_iocs WHERE case_id = ?`).all(caseNode.id),
+      db.prepare(`SELECT technique_id, technique_name, tactic FROM case_techniques WHERE case_id = ?`).all(caseNode.id),
+    ]);
+  }
+
+  return assembleGraph({ caseNode, sessions, sessionActors, sessionIocs, pinnedActors, pinnedIocs, pinnedTechniques });
 }
 
 /**

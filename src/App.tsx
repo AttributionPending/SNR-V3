@@ -742,6 +742,7 @@ function AppMain() {
           />
         ) : activeCaseId ? (
           <CaseView
+            key={activeCaseId}
             caseId={activeCaseId}
             onSelectSession={handleSelectSession}
             onSelectThreatActor={handleSelectThreatActor}

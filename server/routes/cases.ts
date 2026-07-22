@@ -12,6 +12,7 @@ import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import type { AnalysisResult } from '../lib/claude.js';
 import { buildGraphForSessions } from '../lib/graph-db.js';
+import { normalizeIocValue } from '../lib/ioc-index.js';
 import logger from '../lib/logger.js';
 
 const router = Router();
@@ -169,6 +170,39 @@ router.get('/:id', async (req: Request, res: Response) => {
     `).all(...sessionIds)) as Array<Record<string, unknown>>;
   }
 
+  // Entities pinned directly to the case, merged with the session-derived ones.
+  const pinnedActorRows = (await db.prepare('SELECT ta.id, ta.name FROM case_actors ca JOIN threat_actors ta ON ta.id = ca.threat_actor_id WHERE ca.case_id = ? ORDER BY ca.added_at DESC').all(caseId)) as Array<{ id: string; name: string }>;
+  const pinnedTechRows = (await db.prepare('SELECT technique_id, technique_name, tactic FROM case_techniques WHERE case_id = ? ORDER BY added_at DESC').all(caseId)) as Array<{ technique_id: string; technique_name: string; tactic: string }>;
+  const pinnedIocRows = (await db.prepare('SELECT ioc_type AS type, ioc_value AS value, ioc_value_norm AS norm, context FROM case_iocs WHERE case_id = ? ORDER BY added_at DESC').all(caseId)) as Array<{ type: string; value: string; norm: string; context: string }>;
+
+  const byPinnedThenCount = (a: { pinned: boolean; session_count: number }, b: { pinned: boolean; session_count: number }) =>
+    (Number(b.pinned) - Number(a.pinned)) || (b.session_count - a.session_count);
+
+  const ttpMap = new Map<string, { technique_id: string; technique_name: string; tactic: string; session_count: number; pinned: boolean }>();
+  for (const t of aggregatedTtps.values()) ttpMap.set(t.technique_id, { ...t, pinned: false });
+  for (const p of pinnedTechRows) {
+    const ex = ttpMap.get(p.technique_id);
+    if (ex) ex.pinned = true;
+    else ttpMap.set(p.technique_id, { technique_id: p.technique_id, technique_name: p.technique_name, tactic: p.tactic, session_count: 0, pinned: true });
+  }
+
+  const actorMap = new Map<string, { id: string; name: string; session_count: number; pinned: boolean }>();
+  for (const a of derivedActors) actorMap.set(a.id as string, { id: a.id as string, name: a.name as string, session_count: Number(a.session_count), pinned: false });
+  for (const p of pinnedActorRows) {
+    const ex = actorMap.get(p.id);
+    if (ex) ex.pinned = true;
+    else actorMap.set(p.id, { id: p.id, name: p.name, session_count: 0, pinned: true });
+  }
+
+  const iocMap = new Map<string, Record<string, unknown>>();
+  for (const i of aggregatedIocs) iocMap.set(`${i.type}::${i.norm}`, { ...i, pinned: false });
+  for (const p of pinnedIocRows) {
+    const key = `${p.type}::${p.norm}`;
+    const ex = iocMap.get(key);
+    if (ex) ex.pinned = true;
+    else iocMap.set(key, { type: p.type, value: p.value, norm: p.norm, session_count: 0, first_seen: null, last_seen: null, any_false_positive: false, pinned: true, context: p.context });
+  }
+
   const log = (await db.prepare('SELECT id, user_id, author_name, entry_type, content, created_at FROM case_log WHERE case_id = ? ORDER BY created_at DESC').all(caseId)) as Array<Record<string, unknown>>;
 
   res.json({
@@ -177,9 +211,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       assignee: c.assignee, created_at: c.created_at, updated_at: c.updated_at, session_count: sessions.length,
     },
     sessions,
-    aggregated_ttps: [...aggregatedTtps.values()].sort((a, b) => b.session_count - a.session_count),
-    aggregated_iocs: aggregatedIocs,
-    actors: derivedActors,
+    aggregated_ttps: [...ttpMap.values()].sort(byPinnedThenCount),
+    aggregated_iocs: [...iocMap.values()].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (Number(b.session_count) - Number(a.session_count))),
+    actors: [...actorMap.values()].sort(byPinnedThenCount),
     log,
   });
 });
@@ -289,6 +323,145 @@ router.get('/:id/sessions/available', async (req: Request, res: Response) => {
   query += ' ORDER BY s.created_at DESC LIMIT 20';
   const sessions = (await db.prepare(query).all(...params)) as Array<Record<string, unknown>>;
   res.json({ sessions });
+});
+
+// ── Actors pinned directly to the case ────────────────────────────────────────
+// POST /api/cases/:id/actors { actor_id? } | { name? } — pin an existing actor,
+// or create-and-pin a new actor by name.
+router.post('/:id/actors', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const { actor_id, name } = req.body as { actor_id?: string; name?: string };
+  const now = Date.now();
+
+  let actor: { id: string; name: string } | undefined;
+  if (actor_id) {
+    actor = (await db.prepare('SELECT id, name FROM threat_actors WHERE id = ? AND team_id = ?').get(actor_id, authReq.teamId)) as { id: string; name: string } | undefined;
+    if (!actor) { res.status(404).json({ error: 'Actor not found' }); return; }
+  } else if (name?.trim()) {
+    const nm = name.trim();
+    actor = (await db.prepare('SELECT id, name FROM threat_actors WHERE team_id = ? AND LOWER(name) = LOWER(?)').get(authReq.teamId, nm)) as { id: string; name: string } | undefined;
+    if (!actor) {
+      const newId = crypto.randomUUID();
+      await db.prepare('INSERT INTO threat_actors (id, name, team_id, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?)').run(newId, nm, authReq.teamId, authReq.user.id, now, now);
+      actor = { id: newId, name: nm };
+    }
+  } else {
+    res.status(400).json({ error: 'actor_id or name is required' }); return;
+  }
+
+  const r = await db.prepare('INSERT INTO case_actors (case_id, threat_actor_id, added_at, added_by) VALUES (?,?,?,?) ON CONFLICT DO NOTHING').run(caseId, actor.id, now, authReq.user.id);
+  if (r.changes > 0) {
+    await addLog(db, caseId, authReq, 'actor_added', `Added actor "${actor.name}"`);
+    await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId);
+  }
+  res.json({ ok: true, actor });
+});
+
+// DELETE /api/cases/:id/actors/:actorId — unpin.
+router.delete('/:id/actors/:actorId', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const a = (await db.prepare('SELECT name FROM threat_actors WHERE id = ?').get(req.params['actorId'])) as { name: string } | undefined;
+  const r = await db.prepare('DELETE FROM case_actors WHERE case_id = ? AND threat_actor_id = ?').run(caseId, req.params['actorId']);
+  if (r.changes > 0) { await addLog(db, caseId, authReq, 'actor_removed', `Removed actor "${a?.name ?? req.params['actorId']}"`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  res.json({ ok: true });
+});
+
+// GET /api/cases/:id/actors/available?search= — team actors not yet pinned.
+router.get('/:id/actors/available', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const search = (req.query['search'] as string) || '';
+  let query = `SELECT id, name FROM threat_actors WHERE team_id = ? AND name <> 'Unattributed'
+      AND id NOT IN (SELECT threat_actor_id FROM case_actors WHERE case_id = ?)`;
+  const params: unknown[] = [authReq.teamId, caseId];
+  if (search.trim()) { query += ' AND LOWER(name) LIKE ?'; params.push(`%${search.trim().toLowerCase()}%`); }
+  query += ' ORDER BY name LIMIT 20';
+  const actors = (await db.prepare(query).all(...params)) as Array<Record<string, unknown>>;
+  res.json({ actors });
+});
+
+// ── ATT&CK techniques pinned directly to the case ─────────────────────────────
+// POST /api/cases/:id/techniques { technique_id, technique_name, tactic }
+router.post('/:id/techniques', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const { technique_id, technique_name, tactic } = req.body as { technique_id?: string; technique_name?: string; tactic?: string };
+  const tid = (technique_id ?? '').trim();
+  if (!tid) { res.status(400).json({ error: 'technique_id is required' }); return; }
+  const now = Date.now();
+  const r = await db.prepare('INSERT INTO case_techniques (case_id, technique_id, technique_name, tactic, added_at, added_by) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING')
+    .run(caseId, tid, (technique_name ?? '').trim(), (tactic ?? '').trim(), now, authReq.user.id);
+  if (r.changes > 0) { await addLog(db, caseId, authReq, 'technique_added', `Added technique ${tid}${technique_name ? ` (${technique_name})` : ''}`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId); }
+  res.json({ ok: true });
+});
+
+// DELETE /api/cases/:id/techniques/:techniqueId — unpin.
+router.delete('/:id/techniques/:techniqueId', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const r = await db.prepare('DELETE FROM case_techniques WHERE case_id = ? AND technique_id = ?').run(caseId, req.params['techniqueId']);
+  if (r.changes > 0) { await addLog(db, caseId, authReq, 'technique_removed', `Removed technique ${req.params['techniqueId']}`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  res.json({ ok: true });
+});
+
+// ── IOCs pinned directly to the case ──────────────────────────────────────────
+// POST /api/cases/:id/iocs { type, value, context? }
+router.post('/:id/iocs', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const { type, value, context } = req.body as { type?: string; value?: string; context?: string };
+  const t = (type ?? '').trim();
+  const v = (value ?? '').trim();
+  if (!t || !v) { res.status(400).json({ error: 'type and value are required' }); return; }
+  if (v.length > 2048) { res.status(400).json({ error: 'value too long' }); return; }
+  const norm = normalizeIocValue(t, v);
+  const now = Date.now();
+  const r = await db.prepare('INSERT INTO case_iocs (case_id, ioc_type, ioc_value, ioc_value_norm, context, added_at, added_by) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING')
+    .run(caseId, t, v, norm, (context ?? '').trim().slice(0, 2000), now, authReq.user.id);
+  if (r.changes > 0) { await addLog(db, caseId, authReq, 'ioc_added', `Added indicator ${v} (${t})`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId); }
+  res.json({ ok: true });
+});
+
+// DELETE /api/cases/:id/iocs?type=&value= — unpin.
+router.delete('/:id/iocs', async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!ensureEditor(authReq, res)) return;
+  const c = await fetchCase(req, res);
+  if (!c) return;
+  const db = getDb();
+  const caseId = req.params['id'];
+  const t = ((req.query['type'] as string) || '').trim();
+  const v = ((req.query['value'] as string) || '').trim();
+  if (!t || !v) { res.status(400).json({ error: 'type and value are required' }); return; }
+  const norm = normalizeIocValue(t, v);
+  const r = await db.prepare('DELETE FROM case_iocs WHERE case_id = ? AND ioc_type = ? AND ioc_value_norm = ?').run(caseId, t, norm);
+  if (r.changes > 0) { await addLog(db, caseId, authReq, 'ioc_removed', `Removed indicator ${v} (${t})`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  res.json({ ok: true });
 });
 
 // ── GET /api/cases/:id/graph — the case link-analysis subgraph ────────────────

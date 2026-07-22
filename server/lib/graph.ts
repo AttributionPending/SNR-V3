@@ -12,7 +12,7 @@
  * most-shared indicators so large investigations stay legible.
  */
 
-export type GraphEntity = 'case' | 'session' | 'actor' | 'ioc' | 'malware';
+export type GraphEntity = 'case' | 'session' | 'actor' | 'ioc' | 'malware' | 'technique';
 
 export interface GraphNode {
   id: string;
@@ -34,6 +34,10 @@ export interface SessionRow { id: string; name: string; severity?: string | null
 export interface SessionActorRow { session_id: string; actor_id: string; actor_name: string; malware_families?: string | null }
 export interface SessionIocRow { session_id: string; ioc_type: string; ioc_value: string; ioc_value_norm: string }
 
+export interface PinnedActor { id: string; name: string }
+export interface PinnedIoc { type: string; value: string; norm: string }
+export interface PinnedTechnique { technique_id: string; technique_name: string; tactic: string }
+
 export interface AssembleInput {
   /** Optional root case node the sessions belong to. */
   caseNode?: { id: string; name: string };
@@ -42,13 +46,18 @@ export interface AssembleInput {
   sessionIocs: SessionIocRow[];
   /** Keep only the N most-shared IOCs (by session count within the set). */
   maxIocs?: number;
+  /** Entities pinned directly to the case (linked to the case node, not a session). */
+  pinnedActors?: PinnedActor[];
+  pinnedIocs?: PinnedIoc[];
+  pinnedTechniques?: PinnedTechnique[];
 }
 
 const iocNodeId = (type: string, norm: string) => `ioc:${type}:${norm}`;
 
 /** Build a deduplicated link graph from already-fetched rows. Pure. */
 export function assembleGraph(input: AssembleInput): Graph {
-  const { caseNode, sessions, sessionActors, sessionIocs, maxIocs = 60 } = input;
+  const { caseNode, sessions, sessionActors, sessionIocs, maxIocs = 60,
+    pinnedActors = [], pinnedIocs = [], pinnedTechniques = [] } = input;
 
   const nodes = new Map<string, GraphNode>();
   const edges = new Map<string, GraphEdge>();
@@ -98,6 +107,25 @@ export function assembleGraph(input: AssembleInput): Graph {
     const iid = iocNodeId(a.type, a.norm);
     addNode({ id: iid, type: 'ioc', label: a.value, meta: { iocType: a.type, sessions: a.sessions.size } });
     for (const sid of a.sessions) addEdge(`session:${sid}`, iid, 'observed');
+  }
+
+  // Entities pinned directly to the case link to the case node ("tracks").
+  const caseId = caseNode ? `case:${caseNode.id}` : null;
+  for (const a of pinnedActors) {
+    const aid = `actor:${a.id}`;
+    addNode({ id: aid, type: 'actor', label: a.name });
+    if (caseId) addEdge(caseId, aid, 'tracks');
+  }
+  for (const i of pinnedIocs) {
+    const iid = iocNodeId(i.type, i.norm);
+    addNode({ id: iid, type: 'ioc', label: i.value, meta: { iocType: i.type } });
+    if (caseId) addEdge(caseId, iid, 'tracks');
+  }
+  for (const t of pinnedTechniques) {
+    if (!t.technique_id) continue;
+    const tid = `technique:${t.technique_id}`;
+    addNode({ id: tid, type: 'technique', label: `${t.technique_id}${t.technique_name ? ` ${t.technique_name}` : ''}`, meta: { tactic: t.tactic ?? null } });
+    if (caseId) addEdge(caseId, tid, 'tracks');
   }
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };

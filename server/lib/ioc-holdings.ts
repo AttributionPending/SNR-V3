@@ -1,10 +1,12 @@
 /**
  * Shared SQL for the merged indicator view: report-derived observations
  * (ioc_observations, live sessions only) UNIONed with analyst-curated manual
- * indicators (manual_iocs), collapsed by (type, normalized value). Used by the
- * IOC browse list and the Intelligence overview/holdings so a manual indicator
- * and a later report observation of the same value appear as one row, flagged
- * `is_manual` with an incident `session_count` (0 for manual-only).
+ * indicators (manual_iocs) AND indicators pinned directly to a case (case_iocs),
+ * collapsed by (type, normalized value). Used by the IOC browse list and the
+ * Intelligence overview/holdings so a curated indicator and a later report
+ * observation of the same value appear as one row, flagged `is_manual` with an
+ * incident `session_count` (0 for curated-only). Case indicators carry the case
+ * name as their `source`.
  *
  * The returned `cte` is a leading WITH clause; append your own
  * `SELECT ... FROM combined ...`. `params` are the placeholder values the CTE
@@ -14,6 +16,7 @@
 export function combinedIndicatorsCte(teamId: string | undefined): { cte: string; params: unknown[] } {
   const oTeam = teamId ? 'AND o.team_id = ?' : '';
   const mWhere = teamId ? 'WHERE m.team_id = ?' : '';
+  const cWhere = teamId ? 'WHERE c.team_id = ?' : '';
   const cte = `
     WITH combined AS (
       SELECT o.ioc_type AS type, o.ioc_value_norm AS norm, o.ioc_value AS value,
@@ -26,9 +29,14 @@ export function combinedIndicatorsCte(teamId: string | undefined): { cte: string
       SELECT m.ioc_type, m.ioc_value_norm, m.ioc_value,
              CAST(NULL AS TEXT), m.created_at, 1, m.source
       FROM manual_iocs m ${mWhere}
+      UNION ALL
+      SELECT ci.ioc_type, ci.ioc_value_norm, ci.ioc_value,
+             CAST(NULL AS TEXT), ci.added_at, 1, c.name
+      FROM case_iocs ci
+      JOIN cases c ON c.id = ci.case_id ${cWhere}
     )`;
   const params: unknown[] = [];
-  if (teamId) { params.push(teamId); params.push(teamId); }
+  if (teamId) { params.push(teamId); params.push(teamId); params.push(teamId); }
   return { cte, params };
 }
 

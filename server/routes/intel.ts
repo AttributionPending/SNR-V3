@@ -46,8 +46,10 @@ router.get('/overview', async (req: Request, res: Response) => {
       SELECT o.ioc_type, o.ioc_value_norm FROM ioc_observations o JOIN sessions s ON s.id = o.session_id WHERE ${live} ${oTeam}
       UNION
       SELECT m.ioc_type, m.ioc_value_norm FROM manual_iocs m ${teamId ? 'WHERE m.team_id = ?' : ''}
+      UNION
+      SELECT ci.ioc_type, ci.ioc_value_norm FROM case_iocs ci JOIN cases c ON c.id = ci.case_id ${teamId ? 'WHERE c.team_id = ?' : ''}
     ) x`;
-  const indicatorsCountP = teamId ? [teamId, teamId] : [];
+  const indicatorsCountP = teamId ? [teamId, teamId, teamId] : [];
 
   const [
     indicators, actors, techniques, incidents, cases,
