@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye, KeyRound, Rss } from 'lucide-react';
+import { X, Plus, Loader2, Users, Building2, AlertCircle, Trash2, Shield, UserCog, Eye, KeyRound, Rss, Sparkles } from 'lucide-react';
 import ApiKeysPanel from './ApiKeysPanel';
 import FeedsPanel from './FeedsPanel';
+import EnrichmentProvidersPanel from './EnrichmentProvidersPanel';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
 import ConfirmDialog from './ConfirmDialog';
@@ -19,7 +20,7 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: 'text-muted-foreground bg-secondary/50 border-border',
 };
 
-type Tab = 'users' | 'teams' | 'apikeys' | 'feeds';
+type Tab = 'users' | 'teams' | 'apikeys' | 'feeds' | 'enrichment';
 
 export default function AdminPanel({ open, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('users');
@@ -235,6 +236,15 @@ export default function AdminPanel({ open, onClose }: Props) {
               >
                 <Rss className="w-3 h-3 inline mr-1" />Threat Feeds
               </button>
+              <button
+                onClick={() => { setTab('enrichment'); setSelectedTeam(null); }}
+                className={cn(
+                  'px-2.5 py-1 text-xs rounded-md transition-colors',
+                  tab === 'enrichment' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Sparkles className="w-3 h-3 inline mr-1" />Enrichment
+              </button>
             </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -360,6 +370,8 @@ export default function AdminPanel({ open, onClose }: Props) {
             <ApiKeysPanel />
           ) : tab === 'feeds' ? (
             <FeedsPanel />
+          ) : tab === 'enrichment' ? (
+            <EnrichmentProvidersPanel />
           ) : /* teams tab */ selectedTeam ? (
             /* Team detail view */
             <div className="space-y-4">

@@ -422,6 +422,95 @@ suite('sessions + brand-profiles routes', () => {
       expect(ovOther.body.top_iocs.some((i: { value: string }) => i.value === sharedIp)).toBe(false);
     });
 
+    it('exposes the enrichment endpoint with no providers enabled by default', async () => {
+      const r = await request(app).get('/api/enrichment').query({ type: 'ipv4', value: '198[.]51[.]100[.]5' }).set(auth(adminToken));
+      expect(r.status).toBe(200);
+      // Defanged input is normalized to the canonical value before lookup.
+      expect(r.body.value).toBe('198.51.100.5');
+      // Nothing configured → nothing is sent to any third party.
+      expect(r.body.providers).toEqual([]);
+      expect(r.body.anyRegistered).toBe(false);
+      expect(r.body.registered).toEqual([]);
+
+      // type + value are required
+      expect((await request(app).get('/api/enrichment').query({ type: 'ipv4' }).set(auth(adminToken))).status).toBe(400);
+    });
+
+    it('manages enrichment providers without ever exposing the API key', async () => {
+      // Catalog is available to seed the admin picker
+      const cat = await request(app).get('/api/enrichment/catalog').set(auth(adminToken));
+      expect(cat.status).toBe(200);
+      expect(cat.body.catalog.some((c: { kind: string }) => c.kind === 'virustotal')).toBe(true);
+
+      // A viewer cannot manage providers
+      const denied = await request(app).post('/api/enrichment/providers').set(auth(viewerToken)).send({ kind: 'virustotal', apiKey: 'k' });
+      expect(denied.status).toBe(403);
+
+      // Add a catalog preset — its config is seeded server-side
+      const created = await request(app).post('/api/enrichment/providers').set(auth(adminToken))
+        .send({ kind: 'virustotal', apiKey: 'super-secret-key' });
+      expect(created.status).toBe(200);
+      const id = created.body.id as string;
+
+      const list = await request(app).get('/api/enrichment/providers').set(auth(adminToken));
+      const row = list.body.providers.find((p: { id: string }) => p.id === id);
+      expect(row.name).toBe('VirusTotal');
+      expect(row.has_key).toBe(true);
+      // The secret must never be serialized anywhere in the response.
+      expect(JSON.stringify(list.body)).not.toContain('super-secret-key');
+      expect(row.api_key).toBeUndefined();
+      expect(JSON.parse(row.config).supports).toContain('ipv4');
+
+      // A masked value must not overwrite the stored key
+      expect((await request(app).patch(`/api/enrichment/providers/${id}`).set(auth(adminToken)).send({ apiKey: '••••••••' })).status).toBe(200);
+      const afterMask = await request(app).get('/api/enrichment/providers').set(auth(adminToken));
+      expect(afterMask.body.providers.find((p: { id: string }) => p.id === id).has_key).toBe(true);
+
+      // An enabled provider is advertised for the types it supports…
+      const on = await request(app).get('/api/enrichment').query({ type: 'ipv4', value: '8.8.8.8' }).set(auth(adminToken));
+      expect(on.body.anyRegistered).toBe(true);
+      expect(on.body.registered.some((p: { id: string }) => p.id === id)).toBe(true);
+
+      // …but not for an unsupported indicator type
+      const unsupported = await request(app).get('/api/enrichment').query({ type: 'filename', value: 'a.exe' }).set(auth(adminToken));
+      expect(unsupported.body.anyRegistered).toBe(false);
+
+      // Disabling removes it from lookups entirely
+      expect((await request(app).patch(`/api/enrichment/providers/${id}`).set(auth(adminToken)).send({ enabled: false })).status).toBe(200);
+      const off = await request(app).get('/api/enrichment').query({ type: 'ipv4', value: '8.8.8.8' }).set(auth(adminToken));
+      expect(off.body.anyRegistered).toBe(false);
+      expect(off.body.providers).toEqual([]);
+
+      // Custom providers require a usable config
+      const bad = await request(app).post('/api/enrichment/providers').set(auth(adminToken)).send({ kind: 'custom', config: { supports: ['ipv4'] } });
+      expect(bad.status).toBe(400);
+      const badKind = await request(app).post('/api/enrichment/providers').set(auth(adminToken)).send({ kind: 'nope' });
+      expect(badKind.status).toBe(400);
+
+      // Delete
+      expect((await request(app).delete(`/api/enrichment/providers/${id}`).set(auth(adminToken))).status).toBe(200);
+      const gone = await request(app).get('/api/enrichment/providers').set(auth(adminToken));
+      expect(gone.body.providers.some((p: { id: string }) => p.id === id)).toBe(false);
+    });
+
+    it('refuses a custom provider whose URL targets an internal address', async () => {
+      const created = await request(app).post('/api/enrichment/providers').set(auth(adminToken)).send({
+        kind: 'custom',
+        name: 'Metadata probe',
+        config: { supports: ['ipv4'], url: 'https://169.254.169.254/latest/meta-data/{value_enc}' },
+      });
+      expect(created.status).toBe(200);
+      const id = created.body.id as string;
+
+      // The SSRF guard turns the lookup into an error rather than reaching it.
+      const test = await request(app).post(`/api/enrichment/providers/${id}/test`).set(auth(adminToken)).send({ type: 'ipv4', value: '8.8.8.8' });
+      expect(test.status).toBe(200);
+      expect(test.body.result.status).toBe('error');
+      expect(test.body.result.message).toMatch(/Blocked/);
+
+      await request(app).delete(`/api/enrichment/providers/${id}`).set(auth(adminToken));
+    });
+
     it('orders /api/iocs by last_seen with order=recent', async () => {
       const older = '192.0.2.201';
       const newer = '192.0.2.202';

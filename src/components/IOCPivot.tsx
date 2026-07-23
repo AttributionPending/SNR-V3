@@ -5,12 +5,13 @@
  * Backed by GET /api/iocs/occurrences.
  */
 import { useEffect, useState } from 'react';
-import { X, Crosshair, FileText, UserRound, Loader2, PencilLine, Trash2, Folder } from 'lucide-react';
+import { X, Crosshair, FileText, UserRound, Loader2, PencilLine, Trash2, Folder, Copy, Check } from 'lucide-react';
 import { fetchIocOccurrences, deleteManualIoc, type IocOccurrences } from '@/lib/api';
 import { defangIoc } from '@/lib/defang';
 import { cn } from '@/lib/utils';
 import EntityAnnotations from './EntityAnnotations';
 import AddToCaseDialog from './AddToCaseDialog';
+import EnrichmentPanel from './enrichment/EnrichmentPanel';
 
 interface Props {
   type: string;
@@ -35,6 +36,15 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const [addToCase, setAddToCase] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyValue = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch { /* clipboard unavailable */ }
+  };
 
   const removeManual = async () => {
     if (!window.confirm('Remove this manually-added indicator?')) return;
@@ -75,20 +85,27 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
       onClick={onClose}
     >
       <div
-        className="bg-navy-950 border border-border rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col"
+        className="bg-navy-950 border border-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Indicator correlations"
+        aria-label="Indicator detail"
       >
         <div className="px-5 py-4 border-b border-border flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
             <Crosshair className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">Indicator correlations</h2>
-            <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
-              <span className="text-muted-foreground/60">{type}</span> {defangIoc(type, value)}
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-px rounded bg-secondary/60 text-muted-foreground flex-shrink-0">{type}</span>
+              <h2 className="text-sm font-semibold text-foreground font-mono truncate">{defangIoc(type, value)}</h2>
+              <button onClick={() => void copyValue()} className="text-muted-foreground/50 hover:text-foreground flex-shrink-0" title="Copy indicator">
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {loading ? 'Loading…' : `Seen in ${others.length} incident${others.length !== 1 ? 's' : ''}`}
+              {data?.actors.length ? ` · ${data.actors.length} attributed actor${data.actors.length !== 1 ? 's' : ''}` : ''}
             </p>
           </div>
           <button
@@ -103,7 +120,9 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
           </button>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto">
+        {/* Two columns: what WE know (left) vs. external context + analyst notes (right). */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 md:divide-x divide-border overflow-hidden">
+          <div className="px-5 py-4 overflow-y-auto min-h-0">
           {loading && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground py-6 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading…
@@ -180,9 +199,13 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
               )}
             </>
           )}
+          </div>
 
-          <div className="border-t border-border mt-4 pt-4">
-            <EntityAnnotations entityType="ioc" iocType={type} iocValue={value} label={value} />
+          <div className="px-5 py-4 overflow-y-auto min-h-0 border-t md:border-t-0 border-border space-y-4">
+            <EnrichmentPanel type={type} value={value} />
+            <div className="border-t border-border pt-4">
+              <EntityAnnotations entityType="ioc" iocType={type} iocValue={value} label={value} />
+            </div>
           </div>
         </div>
       </div>

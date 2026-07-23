@@ -29,6 +29,7 @@ import casesRouter from './routes/cases.js';
 import graphRouter from './routes/graph.js';
 import annotationsRouter from './routes/annotations.js';
 import intelRouter from './routes/intel.js';
+import enrichmentRouter from './routes/enrichment.js';
 import keysRouter from './routes/keys.js';
 import v1Router from './routes/v1.js';
 import feedsRouter from './routes/feeds.js';
@@ -179,6 +180,7 @@ app.use('/api/cases', requireAuth, requireTeamMember, casesRouter);
 app.use('/api/graph', requireAuth, requireTeamMember, graphRouter);
 app.use('/api/annotations', requireAuth, requireTeamMember, annotationsRouter);
 app.use('/api/intel', requireAuth, requireTeamMember, intelRouter);
+app.use('/api/enrichment', requireAuth, requireTeamMember, enrichmentRouter);
 app.use('/api/brand-profiles', requireAuth, requireTeamMember, brandProfilesRouter);
 
 // ── Threat-intel feeds (JWT, team-scoped) ────────────────────────────────

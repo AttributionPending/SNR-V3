@@ -174,6 +174,84 @@ export async function deleteManualIoc(type: string, value: string): Promise<void
   if (!res.ok) throw new Error('Failed to remove indicator');
 }
 
+// ── Indicator enrichment (pluggable external providers; none enabled by default) ─
+export type EnrichmentStatus = 'ok' | 'not_found' | 'unconfigured' | 'unsupported' | 'error';
+export interface EnrichmentFact { label: string; value: string; tone?: 'neutral' | 'good' | 'warn' | 'bad' }
+export interface EnrichmentResult {
+  providerId: string; providerName: string; status: EnrichmentStatus;
+  summary?: string; facts?: EnrichmentFact[]; link?: string; message?: string; fetchedAt?: number;
+}
+export interface EnrichmentResponse {
+  type: string; value: string;
+  providers: EnrichmentResult[];
+  anyRegistered: boolean;
+  registered: { id: string; name: string; requiredSettings: string[] }[];
+}
+
+/** Run the configured enrichment providers against one indicator. */
+export async function fetchEnrichment(type: string, value: string): Promise<EnrichmentResponse> {
+  const qs = new URLSearchParams({ type, value });
+  const res = await authFetch(`${BASE}/enrichment?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load enrichment');
+  return res.json() as Promise<EnrichmentResponse>;
+}
+
+// ── Enrichment provider administration (admin / team lead) ───────────────────
+export interface EnrichmentFactSpec { label: string; path: string; tone?: 'neutral' | 'good' | 'warn' | 'bad' }
+export interface EnrichmentProviderConfig {
+  supports: string[];
+  url: string;
+  headers?: Record<string, string>;
+  summary?: string;
+  facts?: EnrichmentFactSpec[];
+  link?: string;
+  notFound?: number[];
+}
+export interface EnrichmentCatalogEntry {
+  kind: string; name: string; keyLabel: string; docsUrl?: string; config: EnrichmentProviderConfig;
+}
+export interface EnrichmentProviderRecord {
+  id: string; name: string; kind: string; enabled: number;
+  config: string; has_key: boolean;
+  last_status: string | null; last_used_at: number | null;
+  created_at: number; updated_at: number;
+}
+export interface EnrichmentProviderInput {
+  name?: string; kind?: string; apiKey?: string; config?: EnrichmentProviderConfig; enabled?: boolean;
+}
+
+const jsonBody = (url: string, method: string, body: unknown) =>
+  authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const orThrow = async (res: Response, fallback: string) => {
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || fallback);
+};
+
+export async function fetchEnrichmentCatalog(): Promise<EnrichmentCatalogEntry[]> {
+  const res = await authFetch(`${BASE}/enrichment/catalog`);
+  if (!res.ok) throw new Error('Failed to load provider catalog');
+  return (await res.json() as { catalog: EnrichmentCatalogEntry[] }).catalog;
+}
+export async function listEnrichmentProviders(): Promise<EnrichmentProviderRecord[]> {
+  const res = await authFetch(`${BASE}/enrichment/providers`);
+  if (!res.ok) throw new Error('Failed to load providers');
+  return (await res.json() as { providers: EnrichmentProviderRecord[] }).providers;
+}
+export async function createEnrichmentProvider(input: EnrichmentProviderInput): Promise<void> {
+  await orThrow(await jsonBody(`${BASE}/enrichment/providers`, 'POST', input), 'Failed to add provider');
+}
+export async function updateEnrichmentProvider(id: string, input: EnrichmentProviderInput): Promise<void> {
+  await orThrow(await jsonBody(`${BASE}/enrichment/providers/${id}`, 'PATCH', input), 'Failed to update provider');
+}
+export async function deleteEnrichmentProvider(id: string): Promise<void> {
+  const res = await authFetch(`${BASE}/enrichment/providers/${id}`, { method: 'DELETE' });
+  await orThrow(res, 'Failed to delete provider');
+}
+export async function testEnrichmentProvider(id: string, type: string, value: string): Promise<EnrichmentResult> {
+  const res = await jsonBody(`${BASE}/enrichment/providers/${id}/test`, 'POST', { type, value });
+  await orThrow(res, 'Test failed');
+  return (await res.json() as { result: EnrichmentResult }).result;
+}
+
 export interface IocManualProvenance { context: string; confidence: string | null; source: string; authorName: string; createdAt: number }
 
 export interface IocOccurrences {
