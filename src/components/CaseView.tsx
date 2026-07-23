@@ -321,7 +321,7 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
                   <td className="py-1.5 pr-2"><span className="font-mono text-cyan-400">{t.technique_id}</span> <span className="text-foreground/80">{t.technique_name}</span>{t.pinned && <span className="ml-1.5 text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25">pinned</span>}</td>
                   <td className="py-1.5 pr-2 text-muted-foreground">{t.tactic}</td>
                   <td className="py-1.5 text-right text-muted-foreground">{t.session_count}</td>
-                  <td className="py-1.5 text-right">{t.pinned && <button onClick={() => void removeTechnique(t.technique_id)} className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove from case"><X className="w-3 h-3" /></button>}</td>
+                  <td className="py-1.5 text-right"><button onClick={() => void removeTechnique(t.technique_id)} className="text-muted-foreground/50 hover:text-red-400 transition-colors" title="Remove from this case"><X className="w-3 h-3" /></button></td>
                 </tr>
               ))}
               {detail.aggregated_ttps.length === 0 && <tr><td colSpan={4} className="py-3 text-muted-foreground">No techniques yet — add one or link sessions.</td></tr>}
@@ -352,7 +352,7 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
                   <td className="py-1.5 pr-2 font-mono text-orange-400 cursor-pointer" onClick={() => setPivotIoc({ type: i.type, value: i.value })}>{i.type.toUpperCase()}</td>
                   <td className="py-1.5 pr-2 font-mono text-foreground/90 truncate max-w-[320px] cursor-pointer" onClick={() => setPivotIoc({ type: i.type, value: i.value })}>{defangIoc(i.type, i.value)}{i.pinned && <span className="ml-1.5 text-[8px] uppercase tracking-wide px-1 py-px rounded bg-primary/15 text-primary border border-primary/25">pinned</span>}</td>
                   <td className="py-1.5 text-right"><span className="inline-flex items-center gap-1 text-cyan-300"><Crosshair className="w-2.5 h-2.5" />{i.session_count}</span></td>
-                  <td className="py-1.5 text-right">{i.pinned && <button onClick={() => void removeIoc(i.type, i.value)} className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove from case"><X className="w-3 h-3" /></button>}</td>
+                  <td className="py-1.5 text-right"><button onClick={() => void removeIoc(i.type, i.value)} className="text-muted-foreground/50 hover:text-red-400 transition-colors" title="Remove from this case"><X className="w-3 h-3" /></button></td>
                 </tr>
               ))}
               {detail.aggregated_iocs.length === 0 && <tr><td colSpan={4} className="py-3 text-muted-foreground">No indicators yet — add one or link sessions.</td></tr>}
@@ -403,9 +403,7 @@ export default function CaseView({ caseId, onSelectSession, onSelectThreatActor,
                   <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{a.session_count} session{a.session_count !== 1 ? 's' : ''}</span>
                   <ExternalLink className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
                 </button>
-                {a.pinned && (
-                  <button onClick={() => void removeActor(a.id)} className="text-muted-foreground/50 hover:text-red-400 px-1.5 py-1 flex-shrink-0" title="Remove from case"><X className="w-3 h-3" /></button>
-                )}
+                <button onClick={() => void removeActor(a.id)} className="text-muted-foreground/50 hover:text-red-400 px-1.5 py-1 flex-shrink-0 transition-colors" title="Remove from this case"><X className="w-3 h-3" /></button>
               </li>
             ))}
             {detail.actors.length === 0 && <li className="text-xs text-muted-foreground">No actors yet — add one or link sessions.</li>}

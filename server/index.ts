@@ -102,7 +102,9 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
   // The integration API (/api/v1) is rate-limited per API key instead of per IP,
   // so a single integration host isn't throttled by the shared IP budget.
-  skip: (req) => req.originalUrl.startsWith('/api/v1'),
+  // Integration tests drive hundreds of requests from one IP and don't exercise
+  // rate limiting, so the per-IP budget is skipped under NODE_ENV=test.
+  skip: (req) => req.originalUrl.startsWith('/api/v1') || process.env['NODE_ENV'] === 'test',
 });
 
 // Per-API-key rate limiter for the integration API (window = 1 minute).

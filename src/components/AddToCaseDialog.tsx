@@ -17,6 +17,12 @@ interface Props {
   sessionId?: string;
   /** … or an explicit set (entity pivot). One of the two must be provided. */
   sessionIds?: string[];
+  /**
+   * …or an indicator to pin directly to the case as a first-class member
+   * (used from the global Intelligence indicator list / IOC pivot). When set,
+   * this takes precedence over sessionIds.
+   */
+  ioc?: { type: string; value: string };
   /** Optional context shown in the header (e.g. the IOC value or actor name). */
   label?: string;
   onClose: () => void;
@@ -24,7 +30,7 @@ interface Props {
   onChanged?: () => void;
 }
 
-export default function AddToCaseDialog({ open, sessionId, sessionIds, label, onClose, onShowToast, onChanged }: Props) {
+export default function AddToCaseDialog({ open, sessionId, sessionIds, ioc, label, onClose, onShowToast, onChanged }: Props) {
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [newName, setNewName] = useState('');
@@ -47,20 +53,26 @@ export default function AddToCaseDialog({ open, sessionId, sessionIds, label, on
   const done = (msg: string) => { onShowToast?.(msg, 'success'); onChanged?.(); onClose(); };
 
   const linkExisting = async (c: CaseSummary) => {
-    if (ids.length === 0) return;
+    if (!ioc && ids.length === 0) return;
     setBusy(true);
     try {
-      const { added } = await api.linkCaseSessions(c.id, ids);
-      done(added > 0 ? `Added ${added} incident${added !== 1 ? 's' : ''} to "${c.name}"` : `Already in "${c.name}"`);
+      if (ioc) {
+        await api.pinCaseIoc(c.id, { type: ioc.type, value: ioc.value });
+        done(`Added ${ioc.value} to "${c.name}"`);
+      } else {
+        const { added } = await api.linkCaseSessions(c.id, ids);
+        done(added > 0 ? `Added ${added} incident${added !== 1 ? 's' : ''} to "${c.name}"` : `Already in "${c.name}"`);
+      }
     } catch { onShowToast?.('Failed to add to case', 'error'); } finally { setBusy(false); }
   };
 
   const createNew = async () => {
-    if (!newName.trim() || ids.length === 0) return;
+    if (!newName.trim() || (!ioc && ids.length === 0)) return;
     setBusy(true);
     try {
       const { case: created } = await api.createCase({ name: newName.trim() });
-      await api.linkCaseSessions(created.id, ids);
+      if (ioc) await api.pinCaseIoc(created.id, { type: ioc.type, value: ioc.value });
+      else await api.linkCaseSessions(created.id, ids);
       done(`Created case "${newName.trim()}"`);
     } catch { onShowToast?.('Failed to create case', 'error'); } finally { setBusy(false); }
   };
@@ -72,12 +84,14 @@ export default function AddToCaseDialog({ open, sessionId, sessionIds, label, on
           <Folder className="w-4 h-4 text-violet-400" />
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-foreground">Add to case</h2>
-            {label && <p className="text-[11px] text-muted-foreground truncate">{label} · {ids.length} incident{ids.length !== 1 ? 's' : ''}</p>}
+            {ioc
+              ? <p className="text-[11px] text-muted-foreground truncate font-mono">{ioc.value} <span className="text-muted-foreground/60">({ioc.type})</span></p>
+              : label && <p className="text-[11px] text-muted-foreground truncate">{label} · {ids.length} incident{ids.length !== 1 ? 's' : ''}</p>}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 -m-1"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-4 overflow-y-auto">
-          {ids.length === 0 ? (
+          {!ioc && ids.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">No incidents to add for this entity.</p>
           ) : (
             <>

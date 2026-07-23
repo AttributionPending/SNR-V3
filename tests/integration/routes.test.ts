@@ -276,6 +276,55 @@ suite('sessions + brand-profiles routes', () => {
       expect(detail2.body.aggregated_iocs.some((i: { value: string }) => i.value === '198.51.100.200')).toBe(false);
       expect(detail2.body.aggregated_ttps.some((t: { technique_id: string }) => t.technique_id === 'T1566')).toBe(false);
     });
+
+    it('removes session-derived IOCs/TTPs/actors from a case without unlinking the session', async () => {
+      const ip = '198.51.100.77';
+      const s = await newSession();
+      await request(app).put(`/api/sessions/${s}/result`).set(auth(adminToken)).send({
+        result: {
+          ...minimalResult('Derived-src'),
+          iocs: [{ type: 'ipv4', value: ip, context: 'c2', confidence: 'High' }],
+          attack_chain: [{ technique_id: 'T1071', technique_name: 'App Layer Protocol', tactic: 'Command and Control', tactic_id: 'TA0011', sub_technique_id: null, sub_technique_name: null, evidence: 'e', confidence: 'High', detection_coverage: 'Unknown', detection_recommendation: '', order: 0 }],
+          threat_actor: { name: 'APT-Derived', aliases: [], motivation: null, attribution_confidence: 'High', malware_families: [] },
+        },
+      });
+      const created = await request(app).post('/api/cases').set(auth(adminToken)).send({ name: 'Exclusion case', sessionId: s });
+      const caseId = created.body.case.id as string;
+
+      // all three arrive from the linked session (not pinned)
+      const before = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      const derivedIoc = before.body.aggregated_iocs.find((i: { value: string }) => i.value === ip);
+      expect(derivedIoc?.pinned).toBe(false);
+      const derivedActor = before.body.actors.find((a: { name: string }) => a.name === 'APT-Derived');
+      expect(derivedActor?.pinned).toBe(false);
+      expect(before.body.aggregated_ttps.some((t: { technique_id: string }) => t.technique_id === 'T1071')).toBe(true);
+
+      // remove each — the session stays linked
+      expect((await request(app).delete(`/api/cases/${caseId}/iocs`).query({ type: 'ipv4', value: ip }).set(auth(adminToken))).status).toBe(200);
+      expect((await request(app).delete(`/api/cases/${caseId}/techniques/T1071`).set(auth(adminToken))).status).toBe(200);
+      expect((await request(app).delete(`/api/cases/${caseId}/actors/${derivedActor.id}`).set(auth(adminToken))).status).toBe(200);
+
+      const after = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(after.body.case.session_count).toBe(1);            // session still linked
+      expect(after.body.aggregated_iocs.some((i: { value: string }) => i.value === ip)).toBe(false);
+      expect(after.body.aggregated_ttps.some((t: { technique_id: string }) => t.technique_id === 'T1071')).toBe(false);
+      expect(after.body.actors.some((a: { name: string }) => a.name === 'APT-Derived')).toBe(false);
+
+      // excluded entities are gone from the case graph too
+      const graph = await request(app).get(`/api/cases/${caseId}/graph`).set(auth(adminToken));
+      expect(graph.body.nodes.some((n: { id: string }) => n.id === `ioc:ipv4:${ip}`)).toBe(false);
+
+      // re-adding clears the exclusion (remove/add is symmetric)
+      expect((await request(app).post(`/api/cases/${caseId}/iocs`).set(auth(adminToken)).send({ type: 'ipv4', value: ip })).status).toBe(200);
+      const readded = await request(app).get(`/api/cases/${caseId}`).set(auth(adminToken));
+      expect(readded.body.aggregated_iocs.some((i: { value: string }) => i.value === ip)).toBe(true);
+
+      // exclusions are per-case: another case linking the same session still shows them
+      const other = await request(app).post('/api/cases').set(auth(adminToken)).send({ name: 'Other case', sessionId: s });
+      const otherDetail = await request(app).get(`/api/cases/${other.body.case.id}`).set(auth(adminToken));
+      expect(otherDetail.body.aggregated_iocs.some((i: { value: string }) => i.value === ip)).toBe(true);
+      expect(otherDetail.body.actors.some((a: { name: string }) => a.name === 'APT-Derived')).toBe(true);
+    });
   });
 
   describe('entity annotations', () => {

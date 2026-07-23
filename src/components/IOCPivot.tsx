@@ -5,11 +5,12 @@
  * Backed by GET /api/iocs/occurrences.
  */
 import { useEffect, useState } from 'react';
-import { X, Crosshair, FileText, UserRound, Loader2, PencilLine, Trash2 } from 'lucide-react';
+import { X, Crosshair, FileText, UserRound, Loader2, PencilLine, Trash2, Folder } from 'lucide-react';
 import { fetchIocOccurrences, deleteManualIoc, type IocOccurrences } from '@/lib/api';
 import { defangIoc } from '@/lib/defang';
 import { cn } from '@/lib/utils';
 import EntityAnnotations from './EntityAnnotations';
+import AddToCaseDialog from './AddToCaseDialog';
 
 interface Props {
   type: string;
@@ -33,6 +34,7 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [addToCase, setAddToCase] = useState(false);
 
   const removeManual = async () => {
     if (!window.confirm('Remove this manually-added indicator?')) return;
@@ -67,6 +69,7 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
   const others = data ? data.sessions : [];
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onClick={onClose}
@@ -88,6 +91,13 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
               <span className="text-muted-foreground/60">{type}</span> {defangIoc(type, value)}
             </p>
           </div>
+          <button
+            onClick={() => setAddToCase(true)}
+            className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors flex-shrink-0"
+            title="Add this indicator to a case"
+          >
+            <Folder className="w-3 h-3" /> Add to case
+          </button>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 -m-1" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
@@ -177,5 +187,13 @@ export default function IOCPivot({ type, value, onSelectSession, onClose, onRemo
         </div>
       </div>
     </div>
+
+    <AddToCaseDialog
+      open={addToCase}
+      ioc={{ type, value }}
+      onClose={() => setAddToCase(false)}
+      onChanged={onRemoved}
+    />
+    </>
   );
 }

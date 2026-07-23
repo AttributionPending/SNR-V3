@@ -36,6 +36,31 @@ async function addLog(db: any, caseId: string, authReq: AuthenticatedRequest, en
   ).run(crypto.randomUUID(), caseId, authReq.user.id, authReq.user.displayName, entryType, content, Date.now());
 }
 
+type ExclusionKind = 'ioc' | 'actor' | 'technique';
+
+/** Per-case removed entities, grouped by kind. Derived entities would otherwise
+ *  reappear from their linked sessions on every load. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchExclusions(db: any, caseId: string): Promise<Record<ExclusionKind, Set<string>>> {
+  const rows = (await db.prepare('SELECT entity_type, entity_key FROM case_exclusions WHERE case_id = ?').all(caseId)) as Array<{ entity_type: ExclusionKind; entity_key: string }>;
+  const out: Record<ExclusionKind, Set<string>> = { ioc: new Set(), actor: new Set(), technique: new Set() };
+  for (const r of rows) out[r.entity_type]?.add(r.entity_key);
+  return out;
+}
+
+/** Record a removal so a session-derived entity stops showing in this case. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function addExclusion(db: any, caseId: string, kind: ExclusionKind, key: string, authReq: AuthenticatedRequest): Promise<void> {
+  await db.prepare('INSERT INTO case_exclusions (case_id, entity_type, entity_key, excluded_at, excluded_by) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING')
+    .run(caseId, kind, key, Date.now(), authReq.user.id);
+}
+
+/** Re-adding an entity clears any prior removal, so remove/add stays symmetric. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function clearExclusion(db: any, caseId: string, kind: ExclusionKind, key: string): Promise<void> {
+  await db.prepare('DELETE FROM case_exclusions WHERE case_id = ? AND entity_type = ? AND entity_key = ?').run(caseId, kind, key);
+}
+
 /** Fetch a case row scoped to the caller's team, or send 404 and return null. */
 async function fetchCase(req: Request, res: Response): Promise<Record<string, unknown> | null> {
   const authReq = req as AuthenticatedRequest;
@@ -203,6 +228,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     else iocMap.set(key, { type: p.type, value: p.value, norm: p.norm, session_count: 0, first_seen: null, last_seen: null, any_false_positive: false, pinned: true, context: p.context });
   }
 
+  // Entities the analyst removed from this case (derived ones would otherwise
+  // reappear on every load). Filtered out of all three lists.
+  const excluded = await fetchExclusions(db, caseId);
+
   const log = (await db.prepare('SELECT id, user_id, author_name, entry_type, content, created_at FROM case_log WHERE case_id = ? ORDER BY created_at DESC').all(caseId)) as Array<Record<string, unknown>>;
 
   res.json({
@@ -211,9 +240,11 @@ router.get('/:id', async (req: Request, res: Response) => {
       assignee: c.assignee, created_at: c.created_at, updated_at: c.updated_at, session_count: sessions.length,
     },
     sessions,
-    aggregated_ttps: [...ttpMap.values()].sort(byPinnedThenCount),
-    aggregated_iocs: [...iocMap.values()].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (Number(b.session_count) - Number(a.session_count))),
-    actors: [...actorMap.values()].sort(byPinnedThenCount),
+    aggregated_ttps: [...ttpMap.values()].filter((t) => !excluded.technique.has(t.technique_id)).sort(byPinnedThenCount),
+    aggregated_iocs: [...iocMap.values()]
+      .filter((i) => !excluded.ioc.has(`${String(i.type)}::${String(i.norm)}`))
+      .sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (Number(b.session_count) - Number(a.session_count))),
+    actors: [...actorMap.values()].filter((a) => !excluded.actor.has(a.id)).sort(byPinnedThenCount),
     log,
   });
 });
@@ -355,6 +386,7 @@ router.post('/:id/actors', async (req: Request, res: Response) => {
   }
 
   const r = await db.prepare('INSERT INTO case_actors (case_id, threat_actor_id, added_at, added_by) VALUES (?,?,?,?) ON CONFLICT DO NOTHING').run(caseId, actor.id, now, authReq.user.id);
+  await clearExclusion(db, caseId, 'actor', actor.id);
   if (r.changes > 0) {
     await addLog(db, caseId, authReq, 'actor_added', `Added actor "${actor.name}"`);
     await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId);
@@ -371,8 +403,11 @@ router.delete('/:id/actors/:actorId', async (req: Request, res: Response) => {
   const db = getDb();
   const caseId = req.params['id'];
   const a = (await db.prepare('SELECT name FROM threat_actors WHERE id = ?').get(req.params['actorId'])) as { name: string } | undefined;
-  const r = await db.prepare('DELETE FROM case_actors WHERE case_id = ? AND threat_actor_id = ?').run(caseId, req.params['actorId']);
-  if (r.changes > 0) { await addLog(db, caseId, authReq, 'actor_removed', `Removed actor "${a?.name ?? req.params['actorId']}"`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  // Unpin if pinned, and record an exclusion so a session-derived actor stays gone.
+  await db.prepare('DELETE FROM case_actors WHERE case_id = ? AND threat_actor_id = ?').run(caseId, req.params['actorId']);
+  await addExclusion(db, caseId, 'actor', req.params['actorId'], authReq);
+  await addLog(db, caseId, authReq, 'actor_removed', `Removed actor "${a?.name ?? req.params['actorId']}"`);
+  await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId);
   res.json({ ok: true });
 });
 
@@ -408,6 +443,7 @@ router.post('/:id/techniques', async (req: Request, res: Response) => {
   const now = Date.now();
   const r = await db.prepare('INSERT INTO case_techniques (case_id, technique_id, technique_name, tactic, added_at, added_by) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING')
     .run(caseId, tid, (technique_name ?? '').trim(), (tactic ?? '').trim(), now, authReq.user.id);
+  await clearExclusion(db, caseId, 'technique', tid);
   if (r.changes > 0) { await addLog(db, caseId, authReq, 'technique_added', `Added technique ${tid}${technique_name ? ` (${technique_name})` : ''}`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId); }
   res.json({ ok: true });
 });
@@ -420,8 +456,10 @@ router.delete('/:id/techniques/:techniqueId', async (req: Request, res: Response
   if (!c) return;
   const db = getDb();
   const caseId = req.params['id'];
-  const r = await db.prepare('DELETE FROM case_techniques WHERE case_id = ? AND technique_id = ?').run(caseId, req.params['techniqueId']);
-  if (r.changes > 0) { await addLog(db, caseId, authReq, 'technique_removed', `Removed technique ${req.params['techniqueId']}`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  await db.prepare('DELETE FROM case_techniques WHERE case_id = ? AND technique_id = ?').run(caseId, req.params['techniqueId']);
+  await addExclusion(db, caseId, 'technique', req.params['techniqueId'], authReq);
+  await addLog(db, caseId, authReq, 'technique_removed', `Removed technique ${req.params['techniqueId']}`);
+  await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId);
   res.json({ ok: true });
 });
 
@@ -443,6 +481,7 @@ router.post('/:id/iocs', async (req: Request, res: Response) => {
   const now = Date.now();
   const r = await db.prepare('INSERT INTO case_iocs (case_id, ioc_type, ioc_value, ioc_value_norm, context, added_at, added_by) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING')
     .run(caseId, t, v, norm, (context ?? '').trim().slice(0, 2000), now, authReq.user.id);
+  await clearExclusion(db, caseId, 'ioc', `${t}::${norm}`);
   if (r.changes > 0) { await addLog(db, caseId, authReq, 'ioc_added', `Added indicator ${v} (${t})`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, caseId); }
   res.json({ ok: true });
 });
@@ -459,8 +498,10 @@ router.delete('/:id/iocs', async (req: Request, res: Response) => {
   const v = ((req.query['value'] as string) || '').trim();
   if (!t || !v) { res.status(400).json({ error: 'type and value are required' }); return; }
   const norm = normalizeIocValue(t, v);
-  const r = await db.prepare('DELETE FROM case_iocs WHERE case_id = ? AND ioc_type = ? AND ioc_value_norm = ?').run(caseId, t, norm);
-  if (r.changes > 0) { await addLog(db, caseId, authReq, 'ioc_removed', `Removed indicator ${v} (${t})`); await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId); }
+  await db.prepare('DELETE FROM case_iocs WHERE case_id = ? AND ioc_type = ? AND ioc_value_norm = ?').run(caseId, t, norm);
+  await addExclusion(db, caseId, 'ioc', `${t}::${norm}`, authReq);
+  await addLog(db, caseId, authReq, 'ioc_removed', `Removed indicator ${v} (${t})`);
+  await db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(Date.now(), caseId);
   res.json({ ok: true });
 });
 
@@ -471,7 +512,22 @@ router.get('/:id/graph', async (req: Request, res: Response) => {
   const db = getDb();
   const rows = (await db.prepare('SELECT session_id FROM case_sessions WHERE case_id = ?').all(req.params['id'])) as Array<{ session_id: string }>;
   const graph = await buildGraphForSessions(db, rows.map((r) => r.session_id), { id: c.id as string, name: c.name as string });
-  res.json(graph);
+
+  // Drop entities the analyst removed from this case (and any edge touching them).
+  const excluded = await fetchExclusions(db, req.params['id'] as string);
+  const isExcluded = (nodeId: string): boolean => {
+    if (nodeId.startsWith('actor:')) return excluded.actor.has(nodeId.slice('actor:'.length));
+    if (nodeId.startsWith('technique:')) return excluded.technique.has(nodeId.slice('technique:'.length));
+    if (nodeId.startsWith('ioc:')) {
+      const rest = nodeId.slice('ioc:'.length);
+      const sep = rest.indexOf(':');
+      return sep > 0 && excluded.ioc.has(`${rest.slice(0, sep)}::${rest.slice(sep + 1)}`);
+    }
+    return false;
+  };
+  const nodes = graph.nodes.filter((n) => !isExcluded(n.id));
+  const kept = new Set(nodes.map((n) => n.id));
+  res.json({ nodes, edges: graph.edges.filter((e) => kept.has(e.source) && kept.has(e.target)) });
 });
 
 // ── DELETE /api/cases/:id — delete (sessions untouched) ───────────────────────
