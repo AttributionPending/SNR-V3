@@ -493,6 +493,44 @@ suite('sessions + brand-profiles routes', () => {
       expect(gone.body.providers.some((p: { id: string }) => p.id === id)).toBe(false);
     });
 
+    it('creates feeds with the internal opt-in defaulting off', async () => {
+      const pub = await request(app).post('/api/feeds').set(auth(adminToken))
+        .send({ name: 'Public RSS', type: 'rss', url: 'https://example.com/feed.xml' });
+      expect(pub.status).toBe(201);
+
+      const internal = await request(app).post('/api/feeds').set(auth(adminToken))
+        .send({ name: 'Self-hosted MISP', type: 'misp', url: 'https://misp.corp.local', allowInternal: true });
+      expect(internal.status).toBe(201);
+
+      const list = await request(app).get('/api/feeds').set(auth(adminToken));
+      const byName = (n: string) => list.body.feeds.find((f: { name: string }) => f.name === n);
+      // Strict by default; opt-in only when explicitly requested.
+      expect(byName('Public RSS').allow_internal).toBe(0);
+      expect(byName('Self-hosted MISP').allow_internal).toBe(1);
+      // Auth tokens still never leave the server.
+      expect(byName('Public RSS').auth_token).toBeUndefined();
+
+      // The flag is togglable
+      expect((await request(app).patch(`/api/feeds/${pub.body.id}`).set(auth(adminToken)).send({ allowInternal: true })).status).toBe(200);
+      const after = await request(app).get('/api/feeds').set(auth(adminToken));
+      expect(after.body.feeds.find((f: { id: string }) => f.id === pub.body.id).allow_internal).toBe(1);
+
+      // A viewer cannot create feeds
+      expect((await request(app).post('/api/feeds').set(auth(viewerToken)).send({ name: 'x', type: 'rss', url: 'https://e.com/f' })).status).toBe(403);
+
+      for (const id of [pub.body.id, internal.body.id]) await request(app).delete(`/api/feeds/${id}`).set(auth(adminToken));
+    });
+
+    it('blocks a strict feed pointed at cloud metadata when tested', async () => {
+      const created = await request(app).post('/api/feeds').set(auth(adminToken))
+        .send({ name: 'Metadata feed', type: 'rss', url: 'http://169.254.169.254/latest/meta-data/' });
+      expect(created.status).toBe(201);
+      const t = await request(app).post(`/api/feeds/${created.body.id}/test`).set(auth(adminToken));
+      // The guard turns the poll into a failure instead of reaching the endpoint.
+      expect(t.status).toBeGreaterThanOrEqual(400);
+      await request(app).delete(`/api/feeds/${created.body.id}`).set(auth(adminToken));
+    });
+
     it('refuses a custom provider whose URL targets an internal address', async () => {
       const created = await request(app).post('/api/enrichment/providers').set(auth(adminToken)).send({
         kind: 'custom',

@@ -1,4 +1,5 @@
 /** Shared types for threat-intel feed connectors. */
+import { safeRequest, type SafeResponse } from '../enrichment/egress.js';
 
 export interface FeedRow {
   id: string;
@@ -15,6 +16,8 @@ export interface FeedRow {
   enabled: number;
   last_polled_at: number | null;
   last_status: string | null;
+  /** 1 when this feed is a self-hosted server on a private network (opt-in). */
+  allow_internal?: number;
 }
 
 /** A normalized item from any feed source. */
@@ -31,21 +34,32 @@ export interface FeedConnector {
   fetchItems(feed: FeedRow): Promise<FeedItem[]>;
 }
 
-/** Fetch with a timeout (default 20s). Throws on non-2xx. */
-export async function fetchWithTimeout(
+/**
+ * Fetch a feed source through the shared SSRF-guarded egress.
+ *
+ * Feed URLs are admin-supplied, so the same policy as enrichment applies:
+ * public https by default, with loopback and cloud-metadata destinations
+ * refused outright. A feed explicitly marked `allow_internal` may additionally
+ * reach private ranges over http — the opt-in for self-hosted MISP/TAXII.
+ *
+ * Throws on non-2xx, matching the previous helper so connector error handling
+ * is unchanged. Feed payloads (RSS/STIX bundles) are larger than enrichment
+ * responses, hence the higher byte cap.
+ */
+export async function fetchFeed(
+  feed: Pick<FeedRow, 'url' | 'allow_internal'>,
   url: string,
-  init: RequestInit = {},
+  init: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string } = {},
   timeoutMs = 20_000,
-): Promise<Response> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
-    return res;
-  } finally {
-    clearTimeout(t);
-  }
+): Promise<SafeResponse> {
+  const res = await safeRequest(url, {
+    ...init,
+    timeoutMs,
+    maxBytes: 8 * 1024 * 1024,
+    allowInternal: feed.allow_internal === 1,
+  });
+  if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status} from ${url}`);
+  return res;
 }
 
 /** Strip HTML tags and collapse whitespace for clean analysis input. */

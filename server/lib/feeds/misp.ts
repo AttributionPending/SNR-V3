@@ -1,5 +1,5 @@
 /** MISP events connector (via /events/restSearch). */
-import { fetchWithTimeout, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
+import { fetchFeed, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
 
 interface MispAttribute {
   type?: string;
@@ -43,12 +43,12 @@ export const mispConnector: FeedConnector = {
     } catch { /* ignore */ }
 
     const base = feed.url.replace(/\/+$/, '');
-    const res = await fetchWithTimeout(`${base}/events/restSearch`, {
+    const res = await fetchFeed(feed, `${base}/events/restSearch`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ returnFormat: 'json', limit: Math.max(feed.max_items, 10), ...extra }),
     });
-    const body = (await res.json()) as { response?: Array<{ Event?: MispEvent }> };
+    const body = (res.json() ?? {}) as { response?: Array<{ Event?: MispEvent }> };
     const events = body.response ?? [];
 
     return events

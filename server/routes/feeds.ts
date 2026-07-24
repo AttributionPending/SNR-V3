@@ -57,7 +57,7 @@ router.get('/', async (req: Request, res: Response) => {
   const db = getDb();
   const rows = (await db
     .prepare(
-      `SELECT id, name, type, url, audience, tags, cadence_minutes, max_items, enabled,
+      `SELECT id, name, type, url, audience, tags, cadence_minutes, max_items, enabled, allow_internal,
               last_polled_at, last_status, (auth_token IS NOT NULL) AS has_auth
        FROM feeds WHERE team_id = ? ORDER BY created_at DESC`
     )
@@ -69,7 +69,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   if (!(await requireAdminOrLead(req, res))) return;
   const authReq = req as AuthenticatedRequest;
-  const { name, type, url, authToken, config, audience, tags, cadenceMinutes, maxItems } = req.body as Record<string, unknown>;
+  const { name, type, url, authToken, config, audience, tags, cadenceMinutes, maxItems, allowInternal } = req.body as Record<string, unknown>;
   if (!name || typeof name !== 'string' || !name.trim()) { res.status(400).json({ error: 'name is required' }); return; }
   if (typeof type !== 'string' || !FEED_TYPES.includes(type)) { res.status(400).json({ error: `type must be one of: ${FEED_TYPES.join(', ')}` }); return; }
   if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) { res.status(400).json({ error: 'url must be an http(s) URL' }); return; }
@@ -79,8 +79,8 @@ router.post('/', async (req: Request, res: Response) => {
   const now = Date.now();
   await db
     .prepare(
-      `INSERT INTO feeds (id, team_id, name, type, url, auth_token, config, audience, tags, cadence_minutes, max_items, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO feeds (id, team_id, name, type, url, auth_token, config, audience, tags, cadence_minutes, max_items, allow_internal, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id, authReq.teamId, name.trim(), type, url.trim(),
@@ -90,6 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
       JSON.stringify(Array.isArray(tags) ? tags : []),
       typeof cadenceMinutes === 'number' ? cadenceMinutes : 60,
       typeof maxItems === 'number' ? maxItems : 5,
+      allowInternal === true ? 1 : 0,
       authReq.user.id, now, now,
     );
   appendAuditLog({ analyst_name: authReq.user.displayName, user_id: authReq.user.id, action: 'feed_created', details: `name="${name.trim()}" type=${type}` });
@@ -113,6 +114,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
   if (typeof b.cadenceMinutes === 'number') { sets.push('cadence_minutes = ?'); params.push(b.cadenceMinutes); }
   if (typeof b.maxItems === 'number') { sets.push('max_items = ?'); params.push(b.maxItems); }
   if (typeof b.enabled === 'boolean') { sets.push('enabled = ?'); params.push(b.enabled ? 1 : 0); }
+  if (typeof b.allowInternal === 'boolean') { sets.push('allow_internal = ?'); params.push(b.allowInternal ? 1 : 0); }
   if (typeof b.authToken === 'string' && b.authToken) { sets.push('auth_token = ?'); params.push(b.authToken); }
   if (sets.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
   sets.push('updated_at = ?'); params.push(Date.now());

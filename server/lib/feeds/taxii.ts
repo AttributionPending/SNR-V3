@@ -1,5 +1,5 @@
 /** TAXII 2.1 collection poll connector (STIX 2.1 objects). */
-import { fetchWithTimeout, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
+import { fetchFeed, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
 
 interface StixObject {
   id?: string;
@@ -42,8 +42,8 @@ export const taxiiConnector: FeedConnector = {
   async fetchItems(feed: FeedRow): Promise<FeedItem[]> {
     const headers: Record<string, string> = { Accept: 'application/taxii+json;version=2.1' };
     if (feed.auth_token) headers.Authorization = `Bearer ${feed.auth_token}`;
-    const res = await fetchWithTimeout(objectsUrl(feed), { headers });
-    const body = (await res.json()) as { objects?: StixObject[] };
+    const res = await fetchFeed(feed, objectsUrl(feed), { headers });
+    const body = (res.json() ?? {}) as { objects?: StixObject[] };
     const objects = body.objects ?? [];
 
     return objects

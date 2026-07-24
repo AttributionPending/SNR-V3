@@ -17,7 +17,7 @@ export default function FeedsPanel() {
   const [note, setNote] = useState<string | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState<FeedInput>({ name: '', type: 'rss', url: '', audience: 'soc', cadenceMinutes: 60, maxItems: 5, tags: [] });
+  const [form, setForm] = useState<FeedInput>({ name: '', type: 'rss', url: '', audience: 'soc', cadenceMinutes: 60, maxItems: 5, tags: [], allowInternal: false });
   const [tagsText, setTagsText] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -35,7 +35,7 @@ export default function FeedsPanel() {
     try {
       await createFeed({ ...form, tags: tagsText.split(',').map((t) => t.trim()).filter(Boolean) });
       setShowCreate(false);
-      setForm({ name: '', type: 'rss', url: '', audience: 'soc', cadenceMinutes: 60, maxItems: 5, tags: [] });
+      setForm({ name: '', type: 'rss', url: '', audience: 'soc', cadenceMinutes: 60, maxItems: 5, tags: [], allowInternal: false });
       setTagsText('');
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -83,6 +83,15 @@ export default function FeedsPanel() {
             <label className="text-[11px] text-muted-foreground flex items-center gap-1">every <input type="number" value={form.cadenceMinutes} onChange={(e) => setForm({ ...form, cadenceMinutes: parseInt(e.target.value) || 60 })} className="w-16 bg-background border border-border rounded px-1.5 py-1 text-xs" /> min</label>
             <label className="text-[11px] text-muted-foreground flex items-center gap-1">max <input type="number" value={form.maxItems} onChange={(e) => setForm({ ...form, maxItems: parseInt(e.target.value) || 5 })} className="w-14 bg-background border border-border rounded px-1.5 py-1 text-xs" /></label>
           </div>
+          <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
+            <input type="checkbox" checked={!!form.allowInternal} onChange={(e) => setForm({ ...form, allowInternal: e.target.checked })} className="accent-cyan-500 mt-0.5" />
+            <span>
+              Internal host — self-hosted MISP/TAXII on a private network.
+              <span className="block text-muted-foreground/60">
+                Feeds may only reach public https addresses by default. Tick this to allow private ranges and http for this feed. Loopback and cloud-metadata stay blocked.
+              </span>
+            </span>
+          </label>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="px-2.5 py-1.5 text-xs text-muted-foreground border border-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={creating} className="px-2.5 py-1.5 text-xs bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded flex items-center gap-1">{creating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Create</button>
@@ -97,7 +106,11 @@ export default function FeedsPanel() {
             <div className="flex items-center gap-2">
               <Rss className="w-4 h-4 text-muted-foreground" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium flex items-center gap-2">{f.name} <span className="text-[10px] uppercase text-muted-foreground">{f.type}</span></div>
+                <div className="text-xs font-medium flex items-center gap-2">
+                  {f.name}
+                  <span className="text-[10px] uppercase text-muted-foreground">{f.type}</span>
+                  {f.allow_internal === 1 && <span className="text-[10px] text-yellow-400" title="Permitted to reach private/internal addresses">internal</span>}
+                </div>
                 <div className="text-[10px] text-muted-foreground truncate">{f.url}</div>
                 <div className="text-[10px] text-muted-foreground">every {f.cadence_minutes}m · audience {f.audience} · last polled {fmt(f.last_polled_at)}{f.last_status ? ` · ${f.last_status}` : ''}</div>
               </div>

@@ -1,7 +1,7 @@
 /** RSS / Atom advisory feed connector. */
 import { XMLParser } from 'fast-xml-parser';
 import crypto from 'crypto';
-import { fetchWithTimeout, stripHtml, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
+import { fetchFeed, stripHtml, type FeedConnector, type FeedItem, type FeedRow } from './types.js';
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true });
 
@@ -26,8 +26,8 @@ export const rssConnector: FeedConnector = {
   async fetchItems(feed: FeedRow): Promise<FeedItem[]> {
     const headers: Record<string, string> = { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' };
     if (feed.auth_token) headers.Authorization = `Bearer ${feed.auth_token}`;
-    const res = await fetchWithTimeout(feed.url, { headers });
-    const xml = await res.text();
+    const res = await fetchFeed(feed, feed.url, { headers });
+    const xml = res.body;
     const doc = parser.parse(xml) as Record<string, any>;
 
     const items: FeedItem[] = [];

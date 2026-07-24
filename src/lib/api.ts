@@ -1559,6 +1559,8 @@ export interface FeedRecord {
   last_polled_at: number | null;
   last_status: string | null;
   has_auth?: boolean;
+  /** 1 when this feed may reach private/internal addresses (self-hosted). */
+  allow_internal?: number;
 }
 
 export interface FeedInput {
@@ -1571,6 +1573,8 @@ export interface FeedInput {
   tags?: string[];
   cadenceMinutes?: number;
   maxItems?: number;
+  /** Opt in to private-range / http destinations for a self-hosted server. */
+  allowInternal?: boolean;
 }
 
 export async function listFeeds(): Promise<FeedRecord[]> {
