@@ -60,15 +60,16 @@ export default function EnrichmentPanel({ type, value }: { type: string; value: 
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
-  const load = () => {
+  /** `refresh` re-queries the vendors instead of serving the cached result. */
+  const load = (refresh = false) => {
     setLoading(true);
     setFailed(false);
-    api.fetchEnrichment(type, value)
+    api.fetchEnrichment(type, value, refresh)
       .then(setData)
       .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   };
-  useEffect(load, [type, value]);
+  useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [type, value]);
 
   return (
     <section>
@@ -76,7 +77,7 @@ export default function EnrichmentPanel({ type, value }: { type: string; value: 
         <Sparkles className="w-3 h-3 text-muted-foreground" />
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground/70 flex-1">Enrichment</h3>
         {!loading && (
-          <button onClick={load} className="text-muted-foreground/50 hover:text-foreground" title="Re-run enrichment">
+          <button onClick={() => load(true)} className="text-muted-foreground/50 hover:text-foreground" title="Re-query providers (bypasses the cached result)">
             <RefreshCw className="w-3 h-3" />
           </button>
         )}

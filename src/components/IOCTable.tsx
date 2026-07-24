@@ -296,9 +296,22 @@ export default function IOCTable({ iocs, falsePositives = [], onToggleFalsePosit
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        <span className={cn('truncate', (isInvalid || isFp) && 'line-through opacity-60')}>
-                          {displayValue(ioc)}
-                        </span>
+                        {onPivot ? (
+                          <button
+                            onClick={() => onPivot(ioc)}
+                            title="Open indicator card"
+                            className={cn(
+                              'truncate text-left hover:text-cyan-300 hover:underline underline-offset-2 transition-colors',
+                              (isInvalid || isFp) && 'line-through opacity-60',
+                            )}
+                          >
+                            {displayValue(ioc)}
+                          </button>
+                        ) : (
+                          <span className={cn('truncate', (isInvalid || isFp) && 'line-through opacity-60')}>
+                            {displayValue(ioc)}
+                          </span>
+                        )}
                         {onPivot && (correlations?.[key]?.others ?? 0) > 0 && (
                           <Tooltip>
                             <TooltipTrigger asChild>

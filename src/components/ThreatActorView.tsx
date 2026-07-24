@@ -12,6 +12,7 @@ import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import ConfirmDialog from './ConfirmDialog';
 import EntityAnnotations from './EntityAnnotations';
+import IOCPivot from './IOCPivot';
 import { cn, formatTimestamp, severityDot } from '@/lib/utils';
 import * as api from '@/lib/api';
 import type { ThreatActorDetail, ThreatActorSummary, AggregatedTTP } from '@/types';
@@ -28,6 +29,8 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
   const [detail, setDetail] = useState<ThreatActorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Indicator card opened from an aggregated IOC row.
+  const [pivotIoc, setPivotIoc] = useState<{ type: string; value: string } | null>(null);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -494,7 +497,15 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
                       <tbody>
                         {iocs.map((ioc, idx) => (
                           <tr key={idx} className="border-b border-border/50 last:border-b-0">
-                            <td className="px-3 py-1.5 font-mono text-foreground break-all">{ioc.value}</td>
+                            <td className="px-3 py-1.5 font-mono text-foreground break-all">
+                              <button
+                                onClick={() => setPivotIoc({ type: ioc.type, value: ioc.value })}
+                                title="Open indicator card"
+                                className="text-left hover:text-cyan-300 hover:underline underline-offset-2 transition-colors"
+                              >
+                                {ioc.value}
+                              </button>
+                            </td>
                             <td className="px-3 py-1.5 text-muted-foreground max-w-[200px] truncate">{ioc.context}</td>
                             <td className="px-3 py-1.5 text-center">
                               <span className={cn('px-1.5 py-0.5 rounded text-[10px]', confColor(ioc.confidence))}>
@@ -581,6 +592,15 @@ export default function ThreatActorView({ actorId, onSelectSession, onActorDelet
         }}
         onCancel={() => setConfirmAction(null)}
       />
+
+      {pivotIoc && (
+        <IOCPivot
+          type={pivotIoc.type}
+          value={pivotIoc.value}
+          onSelectSession={(id) => { setPivotIoc(null); onSelectSession(id); }}
+          onClose={() => setPivotIoc(null)}
+        />
+      )}
     </div>
   );
 }

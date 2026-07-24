@@ -19,8 +19,11 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
-const cacheIo = (db: Db) => ({
+/** `skipRead` powers the card's Refresh button: re-query the vendor, then
+ *  overwrite the cached copy. Writes always happen so the next open is cheap. */
+const cacheIo = (db: Db, skipRead = false) => ({
   async read(providerId: string, type: string, value: string): Promise<EnrichmentResult | null> {
+    if (skipRead) return null;
     const row = (await db.prepare(
       'SELECT payload, fetched_at FROM enrichment_cache WHERE provider_id = ? AND ioc_type = ? AND ioc_value_norm = ?',
     ).get(providerId, type, value)) as { payload: string; fetched_at: number } | undefined;
@@ -39,7 +42,10 @@ const cacheIo = (db: Db) => ({
 });
 
 /** Enabled providers for a team, as executable EnrichmentProviders. */
-export async function loadProviders(teamId: string, opts: { includeDisabled?: boolean } = {}): Promise<EnrichmentProvider[]> {
+export async function loadProviders(
+  teamId: string,
+  opts: { includeDisabled?: boolean; noCache?: boolean } = {},
+): Promise<EnrichmentProvider[]> {
   if (!teamId) return [];
   const db = getDb();
   const rows = (await db.prepare(
@@ -47,7 +53,7 @@ export async function loadProviders(teamId: string, opts: { includeDisabled?: bo
      WHERE team_id = ? ${opts.includeDisabled ? '' : 'AND enabled = 1'}
      ORDER BY created_at ASC`,
   ).all(teamId)) as ProviderRow[];
-  const io = cacheIo(db);
+  const io = cacheIo(db, opts.noCache);
   return rows.map((r) => providerFromRow(r, io));
 }
 
@@ -61,8 +67,12 @@ export async function providersFor(teamId: string, type: IocType): Promise<Enric
  * providers are reported (so the UI can prompt) rather than silently skipped.
  * Runs in parallel and never rejects — one bad provider cannot break the card.
  */
-export async function enrichIndicator(req: EnrichmentRequest): Promise<EnrichmentResult[]> {
-  const applicable = await providersFor(req.teamId, req.type);
+export async function enrichIndicator(
+  req: EnrichmentRequest,
+  opts: { noCache?: boolean } = {},
+): Promise<EnrichmentResult[]> {
+  const applicable = (await loadProviders(req.teamId, { noCache: opts.noCache }))
+    .filter((p) => p.supports(req.type));
   if (applicable.length === 0) return [];
 
   return Promise.all(applicable.map(async (p): Promise<EnrichmentResult> => {

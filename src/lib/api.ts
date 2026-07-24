@@ -188,9 +188,13 @@ export interface EnrichmentResponse {
   registered: { id: string; name: string; requiredSettings: string[] }[];
 }
 
-/** Run the configured enrichment providers against one indicator. */
-export async function fetchEnrichment(type: string, value: string): Promise<EnrichmentResponse> {
+/**
+ * Run the configured enrichment providers against one indicator.
+ * `refresh` bypasses the server-side cache and re-queries each vendor.
+ */
+export async function fetchEnrichment(type: string, value: string, refresh = false): Promise<EnrichmentResponse> {
   const qs = new URLSearchParams({ type, value });
+  if (refresh) qs.set('refresh', '1');
   const res = await authFetch(`${BASE}/enrichment?${qs.toString()}`);
   if (!res.ok) throw new Error('Failed to load enrichment');
   return res.json() as Promise<EnrichmentResponse>;

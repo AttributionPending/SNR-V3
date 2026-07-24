@@ -178,7 +178,10 @@ router.get('/', async (req: Request, res: Response) => {
   // Enrich the canonical (refanged, normalized) form so defanged input works.
   const norm = normalizeIocValue(type, value);
   const settings = await loadMergedSettings(authReq.teamId);
-  const providers = await enrichIndicator({ type, value: norm, teamId: authReq.teamId, settings });
+  // refresh=1 (the card's Refresh button) bypasses the cache read so the vendor
+  // is re-queried; the fresh result still replaces the cached copy.
+  const noCache = req.query['refresh'] === '1';
+  const providers = await enrichIndicator({ type, value: norm, teamId: authReq.teamId, settings }, { noCache });
 
   res.json({
     type,

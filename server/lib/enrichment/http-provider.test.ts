@@ -97,10 +97,49 @@ describe('catalog', () => {
     expect(vtPathFor('domain')).toBe('domains');
     expect(vtPathFor('sha256')).toBe('files');
   });
-  it('every preset has a url and supported types', () => {
+
+  it('every preset has a url and supported types, and covers each type it claims', () => {
     for (const c of [catalogEntry('virustotal')!, catalogEntry('abuseipdb')!, catalogEntry('shodan')!, catalogEntry('urlscan')!]) {
       expect(c.config.url).toMatch(/^https:\/\//);
       expect(c.config.supports.length).toBeGreaterThan(0);
+      // Any per-type override must itself be a public https endpoint.
+      for (const u of Object.values(c.config.urlByType ?? {})) expect(u).toMatch(/^https:\/\//);
     }
+  });
+
+  it('urlscan scopes the query to the indicator instead of a loose full-text match', () => {
+    const cfg = catalogEntry('urlscan')!.config;
+    // A bare q={value} returns unrelated recent scans — every type must be field-scoped.
+    for (const type of cfg.supports) {
+      const u = cfg.urlByType?.[type] ?? cfg.url;
+      expect(u, type).toMatch(/q=page\.(domain|ip|url)%3A/);
+    }
+    // Verdicts are not present in the search API response, so none are mapped.
+    expect(JSON.stringify(cfg.facts)).not.toContain('verdicts');
+  });
+});
+
+describe('urlByType', () => {
+  const vt = catalogEntry('virustotal')!;
+  const row = { id: 'p1', name: 'VirusTotal', kind: 'virustotal', api_key: 'K', config: JSON.stringify(vt.config) };
+
+  it('parseConfig preserves per-type URLs', () => {
+    expect(parseConfig(JSON.stringify(vt.config)).urlByType?.domain).toContain('/domains/');
+  });
+
+  it('selects the per-type URL, falling back to url', () => {
+    const cfg = parseConfig(JSON.stringify(vt.config));
+    expect(cfg.urlByType?.['sha256']).toContain('/files/');
+    expect(cfg.urlByType?.['ipv4']).toContain('/ip_addresses/');
+    // A type with no override falls back to the generic template.
+    const fallback = parseConfig(JSON.stringify({ supports: ['ipv4'], url: 'https://x/{value}', urlByType: { domain: 'https://y/{value}' } }));
+    expect(fallback.urlByType?.['ipv4']).toBeUndefined();
+    expect(fallback.url).toBe('https://x/{value}');
+  });
+
+  it('still renders the legacy {vt_path} template for pre-existing rows', () => {
+    expect(render(vt.config.url, { value: '8.8.8.8', apiKey: 'K', type: 'ipv4' }))
+      .toBe('https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8');
+    expect(providerFromRow(row).supports('domain')).toBe(true);
   });
 });

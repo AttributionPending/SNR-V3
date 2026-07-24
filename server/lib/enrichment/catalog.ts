@@ -25,6 +25,12 @@ export interface HttpProviderConfig {
   /** ioc_type values this provider handles. */
   supports: string[];
   url: string;
+  /**
+   * Per-indicator-type URL override, used when a vendor splits its API by
+   * indicator class (VirusTotal) or needs a field-scoped query (urlscan).
+   * Falls back to `url` when the type has no entry.
+   */
+  urlByType?: Record<string, string>;
   headers?: Record<string, string>;
   /** Headline template; may embed {dot.path} values from the response. */
   summary?: string;
@@ -52,9 +58,17 @@ export const CATALOG: CatalogEntry[] = [
     docsUrl: 'https://docs.virustotal.com/reference/overview',
     config: {
       supports: ['ipv4', 'ipv6', 'domain', 'md5', 'sha1', 'sha256'],
-      // ip_addresses / domains / files share a shape; the executor picks the
-      // path segment from the indicator type via {vt_path}.
+      // VirusTotal splits its API by indicator class. `url` keeps the {vt_path}
+      // form so provider rows created before urlByType existed still work.
       url: 'https://www.virustotal.com/api/v3/{vt_path}/{value_enc}',
+      urlByType: {
+        ipv4: 'https://www.virustotal.com/api/v3/ip_addresses/{value_enc}',
+        ipv6: 'https://www.virustotal.com/api/v3/ip_addresses/{value_enc}',
+        domain: 'https://www.virustotal.com/api/v3/domains/{value_enc}',
+        md5: 'https://www.virustotal.com/api/v3/files/{value_enc}',
+        sha1: 'https://www.virustotal.com/api/v3/files/{value_enc}',
+        sha256: 'https://www.virustotal.com/api/v3/files/{value_enc}',
+      },
       headers: { 'x-apikey': '{api_key}' },
       summary: '{data.attributes.last_analysis_stats.malicious} of {data.attributes.last_analysis_stats.harmless} engines flagged this',
       facts: [
@@ -114,14 +128,29 @@ export const CATALOG: CatalogEntry[] = [
     keyLabel: 'urlscan.io API key',
     docsUrl: 'https://urlscan.io/docs/api/',
     config: {
-      supports: ['domain', 'url', 'ipv4'],
-      url: 'https://urlscan.io/api/v1/search/?q={value_enc}&size=1',
+      supports: ['domain', 'url', 'ipv4', 'ipv6'],
+      // Field-scoped queries — a bare q={value} is a loose full-text match that
+      // returns unrelated recent scans rather than scans OF this indicator.
+      url: 'https://urlscan.io/api/v1/search/?q=page.domain%3A{value_enc}&size=1',
+      urlByType: {
+        domain: 'https://urlscan.io/api/v1/search/?q=page.domain%3A{value_enc}&size=1',
+        ipv4: 'https://urlscan.io/api/v1/search/?q=page.ip%3A{value_enc}&size=1',
+        ipv6: 'https://urlscan.io/api/v1/search/?q=page.ip%3A{value_enc}&size=1',
+        url: 'https://urlscan.io/api/v1/search/?q=page.url%3A%22{value_enc}%22&size=1',
+      },
       headers: { 'API-Key': '{api_key}' },
-      summary: '{total} recent scan(s)',
+      summary: '{total} scan(s) on record',
+      // The search API returns page/task metadata; verdicts live on the
+      // per-result endpoint, so they are not mapped here.
       facts: [
-        { label: 'Results', path: 'total' },
+        { label: 'Scans', path: 'total' },
         { label: 'Last scan', path: 'results.0.task.time' },
-        { label: 'Verdict', path: 'results.0.verdicts.overall.malicious', tone: 'bad' },
+        { label: 'Resolved IP', path: 'results.0.page.ip' },
+        { label: 'ASN', path: 'results.0.page.asnname' },
+        { label: 'Country', path: 'results.0.page.country' },
+        { label: 'Server', path: 'results.0.page.server' },
+        { label: 'TLS issuer', path: 'results.0.page.tlsIssuer' },
+        { label: 'HTTP status', path: 'results.0.page.status' },
       ],
       link: 'https://urlscan.io/search/#{value_enc}',
       notFound: [404],

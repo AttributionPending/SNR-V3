@@ -47,6 +47,7 @@ export function parseConfig(raw: string): HttpProviderConfig {
     return {
       supports: Array.isArray(c.supports) ? c.supports : [],
       url: typeof c.url === 'string' ? c.url : '',
+      urlByType: (c.urlByType && typeof c.urlByType === 'object') ? c.urlByType : undefined,
       headers: c.headers ?? {},
       summary: c.summary,
       facts: Array.isArray(c.facts) ? c.facts : [],
@@ -113,11 +114,14 @@ export function providerFromRow(
       if (cached) return cached;
 
       const ctx = { value, apiKey: row.api_key ?? '', type };
-      if (!cfg.url) return { ...base, status: 'error', message: 'Provider has no URL configured.' };
+      // A vendor may split its API by indicator class (VirusTotal) or need a
+      // field-scoped query (urlscan); fall back to the generic url.
+      const urlTemplate = cfg.urlByType?.[type] ?? cfg.url;
+      if (!urlTemplate) return { ...base, status: 'error', message: 'Provider has no URL configured.' };
 
       let result: EnrichmentResult;
       try {
-        const { status, json } = await safeFetch(render(cfg.url, ctx), {
+        const { status, json } = await safeFetch(render(urlTemplate, ctx), {
           headers: Object.fromEntries(Object.entries(cfg.headers ?? {}).map(([k, v]) => [k, render(v, ctx)])),
         });
 
