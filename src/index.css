@@ -110,6 +110,26 @@
   }
 }
 
+@layer utilities {
+  /* A wider, always-visible horizontal scrollbar for wide strips such as the
+     ATT&CK coverage matrix, where the 6px default is hard to grab. */
+  .scroll-x-visible::-webkit-scrollbar {
+    height: 10px;
+  }
+  .scroll-x-visible::-webkit-scrollbar-thumb {
+    @apply bg-navy-600 rounded-full;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-x-visible::-webkit-scrollbar-thumb:hover {
+    @apply bg-cyan-500;
+    background-clip: content-box;
+  }
+  .scroll-x-visible {
+    scrollbar-width: thin;
+  }
+}
+
 /* ── SNR Report Template Editor (TipTap WYSIWYG) ────────────────────────── */
 .snr-editor-content {
   padding: 16px 20px;

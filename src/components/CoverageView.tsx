@@ -8,8 +8,8 @@
  *   - the analysis verdict on whether controls would catch it (attack_chain)
  * `partial` means rules exist yet a gap is still reported.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShieldCheck, Loader2, RefreshCw, Download, FileText, X, AlertTriangle, Eye } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ShieldCheck, Loader2, RefreshCw, Download, FileText, X, AlertTriangle, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import RuleViewer from './RuleViewer';
 import * as api from '@/lib/api';
@@ -85,6 +85,55 @@ export default function CoverageView({ onSelectSession }: Props) {
     }
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [shown]);
+
+  // ── Horizontal scrolling for the ATT&CK matrix ─────────────────────────────
+  // The matrix is a wide horizontal strip inside a vertically-scrolling panel,
+  // so a plain mouse wheel scrolls the page past it rather than moving the
+  // columns. Translate vertical wheel into horizontal scroll (releasing at the
+  // ends so page scrolling still works), and offer explicit arrow buttons.
+  const matrixRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const updateArrows = useCallback(() => {
+    const el = matrixRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = matrixRef.current;
+    if (!el) return;
+    updateArrows();
+
+    // A native listener is required: React's synthetic wheel handler is passive,
+    // so preventDefault() there would be ignored.
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;          // nothing to scroll
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;   // trackpad already horizontal
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return;  // hand back to the page
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+      updateArrows();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+
+    const ro = new ResizeObserver(updateArrows);
+    ro.observe(el);
+    return () => { el.removeEventListener('wheel', onWheel); ro.disconnect(); };
+  }, [updateArrows, byTactic]);
+
+  /** Page the matrix by roughly one screenful, snapped to the column width. */
+  const scrollMatrix = (dir: -1 | 1) => {
+    const el = matrixRef.current;
+    if (!el) return;
+    const COLUMN = 198;   // 190px column + 8px gap
+    const step = Math.max(COLUMN, Math.floor(el.clientWidth * 0.8 / COLUMN) * COLUMN);
+    el.scrollBy({ left: dir * step, behavior: 'smooth' });
+  };
 
   const openTechnique = async (t: CoverageTechnique) => {
     setSelected(t);
@@ -177,7 +226,33 @@ export default function CoverageView({ onSelectSession }: Props) {
             </div>
 
             {/* ATT&CK matrix: a column per tactic, cells coloured by coverage. */}
-            <div className="flex gap-2 overflow-x-auto pb-2">
+            <div className="relative">
+              {canLeft && (
+                <button
+                  onClick={() => scrollMatrix(-1)}
+                  aria-label="Scroll matrix left"
+                  className="absolute left-0 top-0 bottom-3 z-10 w-9 flex items-center justify-start pl-1 bg-gradient-to-r from-background via-background/90 to-transparent text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              )}
+              {canRight && (
+                <button
+                  onClick={() => scrollMatrix(1)}
+                  aria-label="Scroll matrix right"
+                  className="absolute right-0 top-0 bottom-3 z-10 w-9 flex items-center justify-end pr-1 bg-gradient-to-l from-background via-background/90 to-transparent text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              )}
+              <div
+                ref={matrixRef}
+                onScroll={updateArrows}
+                tabIndex={0}
+                role="group"
+                aria-label="ATT&CK coverage matrix — scroll horizontally"
+                className="flex gap-2 overflow-x-auto pb-2 scroll-x-visible focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 rounded"
+              >
               {byTactic.map(([tactic, list]) => (
                 <div key={tactic} className="min-w-[190px] w-[190px] flex-shrink-0">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 px-1 pb-1 border-b border-border mb-1.5 truncate" title={tactic}>
@@ -207,6 +282,7 @@ export default function CoverageView({ onSelectSession }: Props) {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           </div>
 
