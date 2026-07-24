@@ -6,7 +6,7 @@
  * closes them, but are intentionally NOT encoded in the hash (they are transient).
  */
 
-export type ViewKind = 'home' | 'session' | 'actor' | 'case' | 'search' | 'intel';
+export type ViewKind = 'home' | 'session' | 'actor' | 'case' | 'search' | 'intel' | 'coverage';
 export type ModalKind = 'settings' | 'admin' | 'reports' | 'help' | 'changePassword';
 
 export interface NavState {
@@ -31,6 +31,7 @@ export function buildHash(nav: NavState): string {
     case 'actor':   return nav.id ? `#/actor/${encodeURIComponent(nav.id)}` : '#/';
     case 'case':    return nav.id ? `#/case/${encodeURIComponent(nav.id)}` : '#/';
     case 'intel':   return '#/intel';
+    case 'coverage': return '#/coverage';
     case 'search':  return nav.seed ? `#/search/${encodeURIComponent(nav.seed)}` : '#/search';
     case 'home':
     default:        return '#/';
@@ -48,6 +49,7 @@ export function parseHash(hash: string): NavState {
     case 'actor':   return arg ? { view: 'actor', id: arg } : { view: 'home' };
     case 'case':    return arg ? { view: 'case', id: arg } : { view: 'home' };
     case 'intel':   return { view: 'intel' };
+    case 'coverage': return { view: 'coverage' };
     case 'search':  return arg ? { view: 'search', seed: arg } : { view: 'search' };
     default:        return { view: 'home' };
   }

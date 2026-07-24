@@ -7,6 +7,7 @@ import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
 import { reindexSessionIocs, parseFalsePositiveKeys, iocIndexKey } from '../lib/ioc-index.js';
+import { reindexSessionDetectionRules } from '../lib/detection-index.js';
 import { extractReferences } from '../lib/references.js';
 import { generateBrief, extractTechnical, generateDetectionRules, type AnalysisResult } from '../lib/claude.js';
 import { parseSections } from '../lib/sections.js';
@@ -561,6 +562,13 @@ router.put('/:id/result', async (req: Request, res: Response) => {
     await reindexSessionIocs(db, req.params.id, (session.team_id as string) || authReq.teamId, result, []);
   } catch (err) {
     logger.warn({ err, session_id: req.params.id }, 'IOC reindex failed (non-fatal)');
+  }
+
+  // Same for the detection-rule index that powers coverage.
+  try {
+    await reindexSessionDetectionRules(db, req.params.id, (session.team_id as string) || authReq.teamId, result);
+  } catch (err) {
+    logger.warn({ err, session_id: req.params.id }, 'Detection-rule reindex failed (non-fatal)');
   }
 
   appendAuditLog({

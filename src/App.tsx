@@ -22,6 +22,7 @@ import CaseView from './components/CaseView';
 import SearchPalette from './components/SearchPalette';
 import SearchView from './components/SearchView';
 import IntelDashboard from './components/IntelDashboard';
+import CoverageView from './components/CoverageView';
 import { getDefaultView } from './lib/prefs';
 import { buildHash, parseHash, viewPart, sameView, type NavState, type ModalKind } from './lib/nav';
 import type { AnalysisResult, AudienceType, Session, CustomAudience, ThreatActorSummary } from './types';
@@ -125,6 +126,7 @@ function AppMain() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState('');
   const [intelOpen, setIntelOpen] = useState(false);
+  const [coverageOpen, setCoverageOpen] = useState(false);
 
   // Tags
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -273,6 +275,7 @@ function AppMain() {
     setActiveCaseId(null);
     setSearchOpen(false);
     setIntelOpen(false);
+    setCoverageOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -293,6 +296,7 @@ function AppMain() {
     setActiveCaseId(null);
     setSearchOpen(false);
     setIntelOpen(false);
+    setCoverageOpen(false);
     setError(null);
     setAnalystNote('');
     setSessionTags([]);
@@ -612,6 +616,7 @@ function AppMain() {
     setActiveSessionId(null);
     setSearchOpen(false);
     setIntelOpen(false);
+    setCoverageOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -626,6 +631,7 @@ function AppMain() {
     setActiveSessionId(null);
     setSearchOpen(false);
     setIntelOpen(false);
+    setCoverageOpen(false);
     setResult(null);
     setStreamChunks('');
     setStatusMessage('');
@@ -650,6 +656,7 @@ function AppMain() {
     setSearchSeed(q);
     setSearchOpen(true);
     setIntelOpen(false);
+    setCoverageOpen(false);
     setSearchPaletteOpen(false);
     setActiveSessionId(null);
     setActiveThreatActorId(null);
@@ -659,6 +666,18 @@ function AppMain() {
   const handleOpenIntel = useCallback(() => {
     pushNav({ view: 'intel' });
     setIntelOpen(true);
+    setCoverageOpen(false);
+    setSearchOpen(false);
+    setSearchPaletteOpen(false);
+    setActiveSessionId(null);
+    setActiveThreatActorId(null);
+    setActiveCaseId(null);
+  }, [pushNav]);
+
+  const handleOpenCoverage = useCallback(() => {
+    pushNav({ view: 'coverage' });
+    setCoverageOpen(true);
+    setIntelOpen(false);
     setSearchOpen(false);
     setSearchPaletteOpen(false);
     setActiveSessionId(null);
@@ -668,8 +687,8 @@ function AppMain() {
 
   // ── Apply a NavState (from popstate / initial load) to the UI ───────────────
   // Latest view handlers, read by applyNav so it doesn't depend on their identity.
-  const navHandlersRef = useRef({ handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleNewSession });
-  navHandlersRef.current = { handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleNewSession };
+  const navHandlersRef = useRef({ handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleOpenCoverage, handleNewSession });
+  navHandlersRef.current = { handleSelectSession, handleSelectThreatActor, handleSelectCase, handleOpenSearchView, handleOpenIntel, handleOpenCoverage, handleNewSession };
 
   const applyNav = useCallback((nav: NavState) => {
     navLock.current = true;
@@ -682,6 +701,7 @@ function AppMain() {
           case 'case':    if (nav.id) h.handleSelectCase(nav.id); break;
           case 'search':  h.handleOpenSearchView(nav.seed ?? ''); break;
           case 'intel':   h.handleOpenIntel(); break;
+          case 'coverage': h.handleOpenCoverage(); break;
           default:        h.handleNewSession(); break;
         }
       }
@@ -793,10 +813,14 @@ function AppMain() {
           onOpenSearch={() => handleOpenSearchView()}
           onOpenIntel={handleOpenIntel}
           intelActive={intelOpen}
+          onOpenCoverage={handleOpenCoverage}
+          coverageActive={coverageOpen}
           onActorAssigned={handleActorAssigned}
         />
 
-        {intelOpen ? (
+        {coverageOpen ? (
+          <CoverageView onSelectSession={handleSelectSession} />
+        ) : intelOpen ? (
           <IntelDashboard
             onSelectSession={handleSelectSession}
             onSelectThreatActor={handleSelectThreatActor}

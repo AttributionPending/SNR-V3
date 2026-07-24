@@ -384,6 +384,92 @@ suite('sessions + brand-profiles routes', () => {
     });
   });
 
+  describe('detection coverage', () => {
+    const sigma = (name: string, technique: string | null) => ({
+      rule_type: 'sigma', rule_name: name, rule_content: `title: ${name}\ndetection:\n  sel: true`,
+      description: 'd', source: 'generated', confidence: 'High', related_technique: technique,
+    });
+    const technique = (id: string, coverage: string) => ({
+      technique_id: id, technique_name: `Tech ${id}`, tactic: 'Execution', tactic_id: 'TA0002',
+      sub_technique_id: null, sub_technique_name: null, evidence: 'e', confidence: 'High',
+      detection_coverage: coverage, detection_recommendation: '', order: 0,
+    });
+
+    it('merges rule coverage with the analysis verdict per technique', async () => {
+      const s = await newSession();
+      await request(app).put(`/api/sessions/${s}/result`).set(auth(adminToken)).send({
+        result: {
+          ...minimalResult('Coverage-A'),
+          // T2001: rule + no gap  -> covered
+          // T2002: gap, no rule   -> gap
+          // T2003: rule AND gap   -> partial (the disagreement case)
+          attack_chain: [technique('T2001', 'Likely Detected'), technique('T2002', 'Detection Gap'), technique('T2003', 'Detection Gap')],
+          detection_rules: [sigma('rule-a', 'T2001'), sigma('rule-c', 'T2003'), sigma('rule-unmapped', null)],
+        },
+      });
+
+      const cov = await request(app).get('/api/detections/coverage').set(auth(adminToken));
+      expect(cov.status).toBe(200);
+      const byId = (id: string) => cov.body.techniques.find((t: { technique_id: string }) => t.technique_id === id);
+
+      expect(byId('T2001').status).toBe('covered');
+      expect(byId('T2001').rule_count).toBe(1);
+      expect(byId('T2002').status).toBe('gap');
+      expect(byId('T2002').rule_count).toBe(0);
+      expect(byId('T2003').status).toBe('partial');   // rule exists yet a gap is reported
+
+      // The rule body round-trips, so the coverage panel can display/copy/export it.
+      const ruleList = await request(app).get('/api/detections/rules').query({ technique: 'T2001' }).set(auth(adminToken));
+      expect(ruleList.body.rules[0].rule_content).toContain('title: rule-a');
+      expect(ruleList.body.rules[0].rule_content).toContain('detection:');
+
+      // Unmapped rules are counted but never invented as a technique.
+      expect(cov.body.summary.unmapped_rules).toBeGreaterThanOrEqual(1);
+      expect(cov.body.techniques.some((t: { technique_id: string }) => t.technique_id === 'null')).toBe(false);
+      expect(cov.body.summary.rules_by_type.sigma).toBeGreaterThanOrEqual(3);
+    });
+
+    it('dedupes an identical rule reused across sessions, and re-authoring does not double count', async () => {
+      const a = await newSession();
+      const b = await newSession();
+      const shared = sigma('shared-rule', 'T2010');
+      const body = { ...minimalResult('Cov-shared'), attack_chain: [technique('T2010', 'Unknown')], detection_rules: [shared] };
+      await request(app).put(`/api/sessions/${a}/result`).set(auth(adminToken)).send({ result: body });
+      await request(app).put(`/api/sessions/${b}/result`).set(auth(adminToken)).send({ result: body });
+
+      const before = await request(app).get('/api/detections/coverage').set(auth(adminToken));
+      const t = before.body.techniques.find((x: { technique_id: string }) => x.technique_id === 'T2010');
+      expect(t.rule_count).toBe(2);   // two observations…
+
+      // …of one distinct rule body.
+      const rules = await request(app).get('/api/detections/rules').query({ technique: 'T2010' }).set(auth(adminToken));
+      expect(new Set(rules.body.rules.map((r: { rule_hash: string }) => r.rule_hash)).size).toBe(1);
+      expect(rules.body.rules).toHaveLength(2);
+
+      // The index is rebuilt, not appended to, on re-author.
+      await request(app).put(`/api/sessions/${a}/result`).set(auth(adminToken)).send({ result: body });
+      const after = await request(app).get('/api/detections/coverage').set(auth(adminToken));
+      expect(after.body.techniques.find((x: { technique_id: string }) => x.technique_id === 'T2010').rule_count).toBe(2);
+    });
+
+    it('is team-scoped and exports a Navigator layer', async () => {
+      const otherTeam = { Authorization: `Bearer ${adminToken}`, 'X-Team-Id': 'nonexistent_team' };
+      const mine = await request(app).get('/api/detections/coverage').set(auth(adminToken));
+      const theirs = await request(app).get('/api/detections/coverage').set(otherTeam);
+      expect(mine.body.techniques.length).toBeGreaterThan(0);
+      expect(theirs.body.techniques).toEqual([]);
+      expect(theirs.body.summary.rules_total).toBe(0);
+
+      const layer = await request(app).get('/api/detections/coverage/navigator').set(auth(adminToken));
+      expect(layer.status).toBe(200);
+      const parsed = JSON.parse(layer.text) as { domain: string; techniques: Array<{ techniqueID: string; score: number }> };
+      expect(parsed.domain).toBe('enterprise-attack');
+      const gap = parsed.techniques.find((t) => t.techniqueID === 'T2002');
+      const covered = parsed.techniques.find((t) => t.techniqueID === 'T2001');
+      expect(gap!.score).toBeLessThan(covered!.score);
+    });
+  });
+
   describe('intelligence overview', () => {
     const withIoc = (title: string, ip: string, actor: string) => ({
       ...minimalResult(title),

@@ -18,6 +18,7 @@ import { validateAndDeduplicateIOCs } from '../lib/ioc-validator.js';
 import { validateAttackFlow } from '../lib/attack-flow.js';
 import { autoLinkThreatActor } from '../lib/threat-actor-linker.js';
 import { reindexSessionIocs } from '../lib/ioc-index.js';
+import { reindexSessionDetectionRules } from '../lib/detection-index.js';
 import { analysisRunsTotal, analysisDurationSeconds, jobsProcessedTotal } from '../lib/metrics.js';
 import logger from '../lib/logger.js';
 import { JobEventWriter } from './events.js';
@@ -127,6 +128,13 @@ export async function runAnalysisJob(jobId: string, p: AnalysisJobData): Promise
       await reindexSessionIocs(db, p.sessionId, p.teamId, result, []);
     } catch (err) {
       logger.warn({ err, session_id: p.sessionId }, 'IOC reindex failed (non-fatal)');
+    }
+
+    // Same for the detection-rule index that powers coverage.
+    try {
+      await reindexSessionDetectionRules(db, p.sessionId, p.teamId, result);
+    } catch (err) {
+      logger.warn({ err, session_id: p.sessionId }, 'Detection-rule reindex failed (non-fatal)');
     }
 
     const techniques = result.attack_chain.map((t) => t.sub_technique_id ?? t.technique_id);

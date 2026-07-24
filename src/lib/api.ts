@@ -390,6 +390,80 @@ export async function fetchGraph(seed: string): Promise<GraphData> {
   return res.json() as Promise<GraphData>;
 }
 
+// ── Detection coverage (rules aggregated across sessions, mapped to ATT&CK) ───
+
+export type CoverageStatus = 'covered' | 'partial' | 'gap' | 'unknown';
+
+export interface CoverageTechnique {
+  technique_id: string;
+  technique_name: string;
+  tactic: string | null;
+  sessions: number;
+  rule_count: number;
+  rules_by_type: { sigma: number; yara: number; suricata: number };
+  detected_votes: number;
+  gap_votes: number;
+  status: CoverageStatus;
+}
+
+export interface DetectionCoverage {
+  summary: {
+    techniques_observed: number;
+    techniques_with_rules: number;
+    techniques_gap: number;
+    techniques_partial: number;
+    rules_total: number;
+    rules_distinct: number;
+    unmapped_rules: number;
+    rules_by_type: { sigma: number; yara: number; suricata: number };
+  };
+  techniques: CoverageTechnique[];
+}
+
+export interface CoverageRule {
+  id: string;
+  rule_type: string;
+  rule_name: string;
+  rule_hash: string;
+  /** The rule body, for viewing / copying / downloading. */
+  rule_content: string;
+  description: string;
+  source: string;
+  confidence: string | null;
+  technique_id: string | null;
+  created_at: number;
+  session_id: string;
+  session_name: string;
+}
+
+export async function fetchDetectionCoverage(): Promise<DetectionCoverage> {
+  const res = await authFetch(`${BASE}/detections/coverage`);
+  if (!res.ok) throw new Error('Failed to load detection coverage');
+  return res.json() as Promise<DetectionCoverage>;
+}
+
+/** Rules behind one technique. Pass 'UNMAPPED' for rules with no ATT&CK mapping. */
+export async function fetchDetectionRules(technique: string, type = ''): Promise<CoverageRule[]> {
+  const qs = new URLSearchParams({ technique });
+  if (type) qs.set('type', type);
+  const res = await authFetch(`${BASE}/detections/rules?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load detection rules');
+  return (await res.json() as { rules: CoverageRule[] }).rules;
+}
+
+/** Download the aggregate coverage as an ATT&CK Navigator layer. */
+export async function downloadCoverageNavigator(): Promise<void> {
+  const res = await authFetch(`${BASE}/detections/coverage/navigator`);
+  if (!res.ok) throw new Error('Failed to export Navigator layer');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'snr-detection-coverage.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Intelligence holdings overview ────────────────────────────────────────────
 
 export interface IntelActor { id: string; name: string; session_count: number; attribution_confidence: string | null }
