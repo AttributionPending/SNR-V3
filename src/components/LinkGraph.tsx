@@ -3,9 +3,15 @@
  * connecting case, session, actor, ioc, and malware entities. Built on reactflow v11.
  *
  * Layouts (toolbar toggle):
+ *  - Lanes:  one column per entity kind, nodes stacked by connectedness. The
+ *            default — deterministic and the easiest to scan.
  *  - Tree:   dagre left-to-right hierarchy (good for case → incidents → indicators).
  *  - Radial: concentric BFS rings from the most-connected node (or the case).
  *  - Force:  a Fruchterman–Reingold spring simulation (organic clusters).
+ *
+ * Edge routing is per-layout: the left-to-right layouts use orthogonal
+ * (smoothstep) edges, while radial/force use straight lines — right-angle bends
+ * on a radiating layout read as bent arms rather than links.
  *
  * Readability tools:
  *  - Type filters: toggle whole entity classes off; layout recomputes on the subset.
@@ -15,18 +21,19 @@
  *    (session → open, actor → open, ioc → correlation pivot).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import dagre from 'dagre';
 import ReactFlow, {
   Background, Controls, MiniMap, BackgroundVariant, Handle, Position, MarkerType,
   type Node, type Edge, type ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Folder, FileText, Shield, Crosshair, Bug, Search, X, GitBranch, Orbit, Share2, Swords } from 'lucide-react';
+import { Folder, FileText, Shield, Crosshair, Bug, Search, X, GitBranch, Orbit, Share2, Swords, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GraphData, GraphNode } from '@/lib/api';
+import {
+  computePositions, edgeTypeFor, EDGE_LABEL_LIMIT, TYPE_ORDER, NODE_W, NODE_H,
+  type EntityType, type LayoutMode,
+} from '@/lib/graph-layout';
 
-type EntityType = GraphNode['type'];
-type LayoutMode = 'tree' | 'radial' | 'force';
 
 const ENTITY: Record<EntityType, { color: string; icon: typeof Shield; label: string }> = {
   case:      { color: '#8b5cf6', icon: Folder,    label: 'Case' },
@@ -36,10 +43,7 @@ const ENTITY: Record<EntityType, { color: string; icon: typeof Shield; label: st
   malware:   { color: '#ec4899', icon: Bug,       label: 'Malware' },
   technique: { color: '#22d3ee', icon: Swords,    label: 'Technique' },
 };
-const TYPE_ORDER: EntityType[] = ['case', 'session', 'actor', 'ioc', 'malware', 'technique'];
 
-const NODE_W = 190;
-const NODE_H = 46;
 
 interface NodeData {
   entity: GraphNode;
@@ -75,125 +79,8 @@ function EntityNode({ data }: { data: NodeData }) {
 
 const nodeTypes = { entity: EntityNode };
 
-type Pt = { x: number; y: number };
-
-function buildAdjacency(data: GraphData): Map<string, string[]> {
-  const adj = new Map<string, string[]>();
-  for (const n of data.nodes) adj.set(n.id, []);
-  for (const e of data.edges) {
-    adj.get(e.source)?.push(e.target);
-    adj.get(e.target)?.push(e.source);
-  }
-  return adj;
-}
-
-/** Dagre left-to-right hierarchy — returns CENTER positions per node id. */
-function treePositions(data: GraphData): Map<string, Pt> {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', ranksep: 110, nodesep: 30, edgesep: 20, marginx: 24, marginy: 24 });
-  for (const n of data.nodes) g.setNode(n.id, { width: NODE_W, height: NODE_H });
-  for (const e of data.edges) if (g.hasNode(e.source) && g.hasNode(e.target)) g.setEdge(e.source, e.target, {});
-  dagre.layout(g);
-  const pos = new Map<string, Pt>();
-  for (const n of data.nodes) { const p = g.node(n.id); pos.set(n.id, { x: p?.x ?? 0, y: p?.y ?? 0 }); }
-  return pos;
-}
-
-/** Concentric BFS rings from the case (or highest-degree) node. */
-function radialPositions(data: GraphData): Map<string, Pt> {
-  const pos = new Map<string, Pt>();
-  if (!data.nodes.length) return pos;
-  const adj = buildAdjacency(data);
-  const root = data.nodes.find((n) => n.type === 'case')?.id
-    ?? [...data.nodes].sort((a, b) => (adj.get(b.id)?.length ?? 0) - (adj.get(a.id)?.length ?? 0))[0].id;
-
-  const depth = new Map<string, number>([[root, 0]]);
-  const queue = [root];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    const d = depth.get(cur)!;
-    for (const nb of adj.get(cur) ?? []) if (!depth.has(nb)) { depth.set(nb, d + 1); queue.push(nb); }
-  }
-  // Disconnected nodes get pushed to an outer ring.
-  let maxD = 0;
-  for (const d of depth.values()) maxD = Math.max(maxD, d);
-  for (const n of data.nodes) if (!depth.has(n.id)) depth.set(n.id, maxD + 1);
-
-  const byDepth = new Map<number, string[]>();
-  for (const n of data.nodes) {
-    const d = depth.get(n.id)!;
-    (byDepth.get(d) ?? byDepth.set(d, []).get(d)!).push(n.id);
-  }
-  const R = 260;
-  for (const [d, ids] of byDepth) {
-    if (d === 0 && ids.length === 1) { pos.set(ids[0], { x: 0, y: 0 }); continue; }
-    const radius = Math.max(d, 0.5) * R;
-    ids.forEach((id, i) => {
-      const a = (2 * Math.PI * i) / ids.length - Math.PI / 2;
-      pos.set(id, { x: Math.cos(a) * radius, y: Math.sin(a) * radius });
-    });
-  }
-  return pos;
-}
-
-/** Fruchterman–Reingold force-directed layout, seeded from the radial layout. */
-function forcePositions(data: GraphData): Map<string, Pt> {
-  const seed = radialPositions(data);
-  const ids = data.nodes.map((n) => n.id);
-  if (ids.length <= 1) return seed;
-  const P = new Map<string, Pt>();
-  for (const id of ids) { const s = seed.get(id) ?? { x: 0, y: 0 }; P.set(id, { x: s.x, y: s.y }); }
-  const edges = data.edges.filter((e) => P.has(e.source) && P.has(e.target));
-
-  const k = 320;                       // ideal edge length
-  const iterations = ids.length > 150 ? 140 : 260;
-  let temp = k * 0.9;
-  for (let it = 0; it < iterations; it++) {
-    const disp = new Map<string, Pt>();
-    for (const id of ids) disp.set(id, { x: 0, y: 0 });
-    // Repulsion between every pair.
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const a = P.get(ids[i])!, b = P.get(ids[j])!;
-        const dx = a.x - b.x, dy = a.y - b.y;
-        const dist = Math.hypot(dx, dy) || 0.01;
-        const f = (k * k) / dist;
-        const ux = dx / dist, uy = dy / dist;
-        const di = disp.get(ids[i])!; di.x += ux * f; di.y += uy * f;
-        const dj = disp.get(ids[j])!; dj.x -= ux * f; dj.y -= uy * f;
-      }
-    }
-    // Attraction along edges.
-    for (const e of edges) {
-      const a = P.get(e.source)!, b = P.get(e.target)!;
-      const dx = a.x - b.x, dy = a.y - b.y;
-      const dist = Math.hypot(dx, dy) || 0.01;
-      const f = (dist * dist) / k;
-      const ux = dx / dist, uy = dy / dist;
-      const da = disp.get(e.source)!; da.x -= ux * f; da.y -= uy * f;
-      const db = disp.get(e.target)!; db.x += ux * f; db.y += uy * f;
-    }
-    // Apply, capped by cooling temperature.
-    for (const id of ids) {
-      const d = disp.get(id)!;
-      const dl = Math.hypot(d.x, d.y) || 0.01;
-      const p = P.get(id)!;
-      p.x += (d.x / dl) * Math.min(dl, temp);
-      p.y += (d.y / dl) * Math.min(dl, temp);
-    }
-    temp = Math.max(temp * 0.97, k * 0.02);
-  }
-  return P;
-}
-
-function computePositions(data: GraphData, mode: LayoutMode): Map<string, Pt> {
-  if (mode === 'radial') return radialPositions(data);
-  if (mode === 'force') return forcePositions(data);
-  return treePositions(data);
-}
-
 const LAYOUTS: { mode: LayoutMode; label: string; icon: typeof GitBranch }[] = [
+  { mode: 'lanes', label: 'Lanes', icon: LayoutGrid },
   { mode: 'tree', label: 'Tree', icon: GitBranch },
   { mode: 'radial', label: 'Radial', icon: Orbit },
   { mode: 'force', label: 'Force', icon: Share2 },
@@ -207,7 +94,7 @@ interface Props {
 }
 
 export default function LinkGraph({ data, onSelectSession, onSelectActor, onPivotIoc }: Props) {
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('tree');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('lanes');
   const [hidden, setHidden] = useState<Set<EntityType>>(new Set());
   const [query, setQuery] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -241,8 +128,9 @@ export default function LinkGraph({ data, onSelectSession, onSelectActor, onPivo
       const p = pos.get(n.id) ?? { x: 0, y: 0 };
       return { id: n.id, type: 'entity', position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, data: { entity: n } } as Node;
     });
+    const edgeType = edgeTypeFor(layoutMode);
     const edges: Edge[] = filtered.edges.map((e, i) => ({
-      id: `e-${i}`, source: e.source, target: e.target, label: e.label, type: 'smoothstep',
+      id: `e-${i}`, source: e.source, target: e.target, label: e.label, type: edgeType,
       markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
     } as Edge));
     return { nodes, edges };
@@ -256,6 +144,9 @@ export default function LinkGraph({ data, onSelectSession, onSelectActor, onPivo
     }
     return m;
   }, [filtered]);
+
+  // Small graphs can afford permanent edge labels; busy ones cannot.
+  const labelsAlwaysOn = filtered.edges.length <= EDGE_LABEL_LIMIT;
 
   const q = query.trim().toLowerCase();
   const matchIds = useMemo(() => {
@@ -289,15 +180,19 @@ export default function LinkGraph({ data, onSelectSession, onSelectActor, onPivo
     const active = !activeSet || (activeSet.has(e.source) && activeSet.has(e.target));
     const touchesFocus = focusId != null && (e.source === focusId || e.target === focusId);
     const stroke = touchesFocus ? 'rgba(59,130,246,0.9)' : active ? 'rgba(148,163,184,0.4)' : 'rgba(148,163,184,0.08)';
+    // On a busy graph the same relation ("observed") repeated on every edge is
+    // pure noise — keep labels for the focused node's links only.
+    const showLabel = labelsAlwaysOn || touchesFocus;
     return {
       ...e,
+      label: showLabel ? e.label : undefined,
       style: { stroke, strokeWidth: touchesFocus ? 2 : 1.25 },
       labelStyle: { fontSize: 9, fill: `rgba(226,232,240,${active ? 0.6 : 0.12})` },
       labelBgStyle: { fill: 'hsl(var(--card))', fillOpacity: active ? 1 : 0.2 },
       labelBgPadding: [2, 3] as [number, number],
       markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: touchesFocus ? 'rgba(59,130,246,0.9)' : `rgba(148,163,184,${active ? 0.45 : 0.1})` },
     } as Edge;
-  }), [base.edges, activeSet, focusId]);
+  }), [base.edges, activeSet, focusId, labelsAlwaysOn]);
 
   // Re-fit the view when the layout or the visible set changes.
   useEffect(() => {
